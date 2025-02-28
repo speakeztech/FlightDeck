@@ -1,3 +1,3 @@
-dotnet tool uninstall -g Fornax
+dotnet tool uninstall -g FlightDeck
 dotnet pack -c Release -o nupkg
-dotnet tool install --add-source ./nupkg -g fornax
+dotnet tool install --add-source ./nupkg -g flightdeck
