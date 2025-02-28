@@ -1,4 +1,4 @@
-#r "_lib/Fornax.Core.dll"
+#r "_lib/FlightDeck.Core.dll"
 
 open Config
 open System.IO

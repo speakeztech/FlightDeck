@@ -1,5 +1,5 @@
-#r "../../src/Fornax.Core/bin/Release/netstandard2.0/Fornax.Core.dll"
-#if !FORNAX
+#r "../../src/FlightDeck.Core/bin/Release/netstandard2.0/FlightDeck.Core.dll"
+#if !FlightDeck
 #load "../loaders/postloader.fsx"
 #load "../loaders/customloader.fsx"
 #endif

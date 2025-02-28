@@ -1,16 +1,8 @@
-# Fornax
+# FlightDeck
 
-![Logo](https://raw.githubusercontent.com/Ionide/Fornax/master/logo/Fornax.png)
+![Logo](/logo/FlightDeckMainLogoFullColor.svg)
 
-Fornax is a **scriptable static site generator** using type safe F# DSL to define page layouts.
-
-Fornax is part of the Ionide tooling suite - You can support its development on [Open Collective](https://opencollective.com/ionide).
-
-[![open collective backers](https://img.shields.io/opencollective/backers/ionide.svg?color=blue)](https://opencollective.com/ionide)
-[![open collective sponsors](https://img.shields.io/opencollective/sponsors/ionide.svg?color=blue)](https://opencollective.com/ionide)
-
-[![Open Collective](https://opencollective.com/ionide/donate/button.png?color=blue)](https://opencollective.com/ionide)
-
+FlightDeck is a **scriptable static site generator** using type safe F# DSL to define page layouts. While it is designed to minimize out-of-the-box JavaScript dependencies, it can be easily extended to suit your individual needs.
 
 ## Working features
 
@@ -19,34 +11,32 @@ Fornax is part of the Ionide tooling suite - You can support its development on 
 * Dynamic configuration using `.fsx` file
 * Watch mode that rebuilds your page whenever you change data, or any script file.
 
-
 ## Installation
 
-Fornax is released as a global .Net Core tool. You can install it with `dotnet tool install fornax -g`
+FlightDeck is released as a global .Net Core tool. You can install it with `dotnet tool install FlightDeck -g`
 
 ## CLI Application
 
-The main functionality of Fornax comes from CLI applications that lets user scaffold, and generate webpages.
+The main functionality of FlightDeck comes from CLI applications that lets user scaffold, and generate webpages.
 
-* `fornax new` - scaffolds new blog in current working directory using a really simple template
-* `fornax build` - builds webpage, puts output to `_public` folder
-* `fornax watch` - starts a small webserver that hosts your generated site, and a background process that recompiles the site whenever any changes are detected. This is the recommended way of working with Fornax.
-* `fornax clean` - removes the output directory and any temp files
-* `fornax version` - prints out the currently-installed version of Fornax
-* `fornax help` - prints out help
+* `FlightDeck new` - scaffolds new blog in current working directory using a really simple template
+* `FlightDeck build` - builds webpage, puts output to `_public` folder
+* `FlightDeck watch` - starts a small webserver that hosts your generated site, and a background process that recompiles the site whenever any changes are detected. This is the recommended way of working with FlightDeck.
+* `FlightDeck clean` - removes the output directory and any temp files
+* `FlightDeck version` - prints out the currently-installed version of FlightDeck
+* `FlightDeck help` - prints out help
 
 ## Getting started
 
-Easiest way to get started with `fornax` is running `fornax new` and then `fornax watch` - this will create a fairly minimal blog site template, start `fornax` in watch mode and then start a webserver. Then you can go to `localhost:8080` in your browser to see the page, and edit the scaffolded files in an editor to make changes.
-Additionally, you can take a look at the `samples` folder in this repository - it has a couple more `loaders` and `generators` that you may use in your website.
+Easiest way to get started with `FlightDeck` is running `FlightDeck new` and then `FlightDeck watch` - this will create a fairly minimal blog site template, start `FlightDeck` in watch mode and then start a webserver. Then you can go to `localhost:8080` in your browser to see the page, and edit the scaffolded files in an editor to make changes. Additionally, you can take a look at the `samples` folder in this repository - it has a couple more `loaders` and `generators` that you may use in your website.
 
 ## Website definition
 
-Fornax is using normal F# code (F# script files) to define any of its core concepts: `loaders`, `generators` and `config`.
+FlightDeck is using normal F# code (F# script files) to define any of its core concepts: `loaders`, `generators` and `config`.
 
 ### SiteContents
 
-`SiteContents` is a fairly simple type that provides access to any information available to Fornax. The information is provided by using `loaders` and can then be accessed in `generators`.
+`SiteContents` is a fairly simple type that provides access to any information available to FlightDeck. The information is provided by using `loaders` and can then be accessed in `generators`.
 
 `SiteContents` has several functions in it's public API:
 
@@ -73,7 +63,7 @@ Want to load information from local database, or from the internet? Sure, why no
 `Loaders` are normal F# functions that takes as an input `SiteContents` and absolute path to the page root, and returns `SiteContents`:
 
 ```fsharp
-#r "../_lib/Fornax.Core.dll"
+#r "../_lib/FlightDeck.Core.dll"
 
 type Page = {
     title: string
@@ -92,11 +82,11 @@ let loader (projectRoot: string) (siteContent: SiteContents) =
 
 ### Generators
 
-`Generator` is an F# script responsible for generating output of the Fornax process. This is usually `.html` file, but can be anything else - actually `generator` API just requires to return `string` that will be saved to a file. Generators are, again, plain F# functions that as input takes `SiteContents`, absolute path to the page root, relative path to the file that's currently processed (may be empty for the global generators) and returns `string`:
+`Generator` is an F# script responsible for generating output of the FlightDeck process. This is usually `.html` file, but can be anything else - actually `generator` API just requires to return `string` that will be saved to a file. Generators are, again, plain F# functions that as input takes `SiteContents`, absolute path to the page root, relative path to the file that's currently processed (may be empty for the global generators) and returns `string`:
 
 ```fsharp
-#r "../_lib/Fornax.Core.dll"
-#if !FORNAX
+#r "../_lib/FlightDeck.Core.dll"
+#if !FlightDeck
 #load "../loaders/postloader.fsx"
 #endif
 
@@ -123,10 +113,10 @@ let generate (ctx : SiteContents) (projectRoot: string) (page: string) =
 
 ### Configuration
 
-`Configuration` is an F# script file that defines when which analyzers need to be run, and how to save its output. A `Config.fsx` file needs to be put in the root of your site project (the place from which you run the `fornax` CLI tool)
+`Configuration` is an F# script file that defines when which analyzers need to be run, and how to save its output. A `Config.fsx` file needs to be put in the root of your site project (the place from which you run the `FlightDeck` CLI tool)
 
 ```fsharp
-#r "../_lib/Fornax.Core.dll"
+#r "../_lib/FlightDeck.Core.dll"
 
 open Config
 open System.IO
@@ -194,7 +184,7 @@ There might be a little voice inside that tells you you're not ready; that you n
 
 I assure you, that's not the case.
 
-This project has some clear Contribution Guidelines and expectations that you can [read here](https://github.com/Ionide/Fornax/blob/master/CONTRIBUTING.md).
+This project has some clear Contribution Guidelines and expectations that you can [read here](https://github.com/Ionide/FlightDeck/blob/master/CONTRIBUTING.md).
 
 The contribution guidelines outline the process that you'll need to follow to get a patch merged. By making expectations and process explicit, I hope it will make it easier for you to contribute.
 
@@ -212,9 +202,20 @@ Thank you for contributing!
 
 ## Contributing and copyright
 
-The project is hosted on [GitHub](https://github.com/Ionide/Fornax) where you can [report issues](https://github.com/Ionide/Fornax/issues), fork
-the project and submit pull requests. Please read [Contribution Guide](https://github.com/Ionide/Fornax/blob/master/CONTRIBUTING.md)
+The project is hosted on [GitHub](https://github.com/Ionide/FlightDeck) where you can [report issues](https://github.com/Ionide/FlightDeck/issues), fork
+the project and submit pull requests. Please read [Contribution Guide](https://github.com/Ionide/FlightDeck/blob/master/CONTRIBUTING.md)
 
-The library is available under [MIT license](https://github.com/Ionide/Fornax/blob/master/LICENSE.md), which allows modification and redistribution for both commercial and non-commercial purposes.
+The library is available under [MIT license](https://github.com/Ionide/FlightDeck/blob/master/LICENSE.md), which allows modification and redistribution for both commercial and non-commercial purposes.
 
 Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+
+## Project History 
+
+<img align="left" width="100" height="100" src="http://www.fillmurray.com/100/100">
+
+FlightDeck is a hard fork of Fornax - an elegant creation of Kristof Cieslak that's part of the Ionide tooling suite - You can support Ionide here: [Open Collective](https://opencollective.com/ionide).
+
+[![open collective backers](https://img.shields.io/opencollective/backers/ionide.svg?color=blue)](https://opencollective.com/ionide)
+[![open collective sponsors](https://img.shields.io/opencollective/sponsors/ionide.svg?color=blue)](https://opencollective.com/ionide)
+
+[![Open Collective](https://opencollective.com/ionide/donate/button.png?color=blue)](https://opencollective.com/ionide)

@@ -1,4 +1,4 @@
-#r "../_lib/Fornax.Core.dll"
+#r "../_lib/FlightDeck.Core.dll"
 
 type SiteInfo = {
     title: string
@@ -8,7 +8,7 @@ type SiteInfo = {
 
 let loader (projectRoot: string) (siteContent: SiteContents) =
     let siteInfo =
-        { title = "Sample Fornax blog";
+        { title = "Sample FlightDeck blog";
           description = "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
           postPageSize = 5 }
     siteContent.Add(siteInfo)

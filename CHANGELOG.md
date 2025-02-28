@@ -4,23 +4,23 @@
 ## 0.15.1 - 07.03.2023
 
 ### Fixed
-* [Support file with spaces in the name](https://github.com/ionide/Fornax/pull/116) (thanks @MangelMaxime!)
+* [Support file with spaces in the name](https://github.com/ionide/FlightDeck/pull/116) (thanks @MangelMaxime!)
 
 ### Changed
-* [Add colors to error/success/info messages](https://github.com/ionide/Fornax/pull/118) (thanks @drewknab!)
-* [Update to .NET 6, use project-based FAKE build instead of script](https://github.com/ionide/Fornax/pull/122) (thanks @kMutagene!)
+* [Add colors to error/success/info messages](https://github.com/ionide/FlightDeck/pull/118) (thanks @drewknab!)
+* [Update to .NET 6, use project-based FAKE build instead of script](https://github.com/ionide/FlightDeck/pull/122) (thanks @kMutagene!)
 
 ## 0.14.3 - 07.05.2022
 
 ### Fixed
 
-* [improved support for watch mode](https://github.com/ionide/Fornax/pull/103) (thanks @bigjonroberts!)
+* [improved support for watch mode](https://github.com/ionide/FlightDeck/pull/103) (thanks @bigjonroberts!)
 
 ## 0.14.1 - 29.04.2022
 
 ### Added
 
-* [A new case for the `HtmlElement` type was added for custom tags](https://github.com/ionide/Fornax/pull/106) (thanks @Freymaurer!)
+* [A new case for the `HtmlElement` type was added for custom tags](https://github.com/ionide/FlightDeck/pull/106) (thanks @Freymaurer!)
 
 ## 0.14.0 - 15.01.2022
 
@@ -37,7 +37,7 @@
 * Watch mode enhancement (#79)
 * Update to .NET 5 (#78)
 * Change after testing on Windows Directory.Delete throws exception on files with read-only attribute.
-* Add LibGit2Sharp, add sub commands to fornax new
+* Add LibGit2Sharp, add sub commands to FlightDeck new
 * Update FCS, fake-cli and paket. (#73)
 * Add GitHub Actions build (#74)
 * Improve mobile layout
@@ -80,8 +80,8 @@
 ### Added
 * Update to .NET Core 3.0
 * Adds tools manifest .config/dotnet-tools.json
-* Redesign Fornax around idea of `loaders` and `generators`
-* Create new `fornax new` template
+* Redesign FlightDeck around idea of `loaders` and `generators`
+* Create new `FlightDeck new` template
 
 ## 0.2.0 - 05.08.2019
 ### Added

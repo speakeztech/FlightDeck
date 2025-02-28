@@ -1,12 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>Fornax.Core.UnitTests</AssemblyName>
+    <AssemblyName>FlightDeck.Core.UnitTests</AssemblyName>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Fornax.Core\Fornax.Core.fsproj" />
+    <ProjectReference Include="..\..\src\FlightDeck.Core\FlightDeck.Core.fsproj" />
     <Compile Include="Tests.fs" />
     <Compile Include="Main.fs" />
     <None Include="paket.references" />

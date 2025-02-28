@@ -3,23 +3,23 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>fornax</ToolCommandName>
+    <ToolCommandName>FlightDeck</ToolCommandName>
     <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Fornax.Core\Fornax.Core.fsproj" />
+    <ProjectReference Include="..\FlightDeck.Core\FlightDeck.Core.fsproj" />
 
     <Compile Include="FSIRefs.fs" />
     <Compile Include="Logger.fs" />
     <Compile Include="Generator.fs" />
-    <Compile Include="Fornax.fs" />
+    <Compile Include="FlightDeck.fs" />
     <!-- we want the include the raw template files
           but not the rendered html (generated from tests)
           but not pack the files (it would end up in the content directory by default if we did)
           copy them to the project output
           but copy them to the `blogTemplate` folder under the output so we cna find it at runtime -->
-    <Content Include="../Fornax.Template/**"
-      Exclude="../Fornax.Template/_public/**"
+    <Content Include="../FlightDeck.Template/**"
+      Exclude="../FlightDeck.Template/_public/**"
       Pack="false"
       CopyToOutputDirectory="PreserveNewest"
       LinkBase="blogTemplate"

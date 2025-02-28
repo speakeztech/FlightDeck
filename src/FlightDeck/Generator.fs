@@ -33,7 +33,7 @@ module EvaluatorHelpers =
                 yield! refs
                 yield "--noframework"
                 if isWatch then  yield "--define:WATCH"
-                yield "--define:FORNAX"
+                yield "--define:FlightDeck"
                 yield "/temp/fsi.exe"; |]
             FsiEvaluationSession.Create(fsiConfig, argv, inStream, outStream, errStream)
         with
@@ -282,7 +282,7 @@ module ConfigEvaluator =
                     Ok s
                 | None -> sprintf "Configuration evaluator %s couldn't be compiled" generatorPath |> Error)
 
-exception FornaxGeneratorException of string
+exception FlightDeckGeneratorException of string
 
 type GeneratorMessage = string
 
@@ -445,10 +445,10 @@ let generateFolder (sc : SiteContents) (projectRoot : string) (isWatch: bool) =
     let config =
         let configPath = Path.Combine(projectRoot, "config.fsx")
         if not (File.Exists configPath) then
-            raise (FornaxGeneratorException "Couldn't find config.fsx")
+            raise (FlightDeckGeneratorException "Couldn't find config.fsx")
         match ConfigEvaluator.evaluate fsi sc configPath with
         | Ok cfg -> cfg
-        | Error error -> raise (FornaxGeneratorException error)
+        | Error error -> raise (FlightDeckGeneratorException error)
 
     let loaders = Directory.GetFiles(Path.Combine(projectRoot, "loaders"), "*.fsx")
     let sc =
@@ -470,7 +470,7 @@ let generateFolder (sc : SiteContents) (projectRoot : string) (isWatch: bool) =
             okfn "%s" message
         | GeneratorFailure message ->
             // if one generator fails we want to exit early and report the problem to the operator
-            raise (FornaxGeneratorException message)
+            raise (FlightDeckGeneratorException message)
 
     runOnceGenerators fsi config sc projectRoot
     |> List.iter logResult

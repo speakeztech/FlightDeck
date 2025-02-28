@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>Fornax.Core</AssemblyName>
+    <AssemblyName>FlightDeck.Core</AssemblyName>
     <OutputType>Library</OutputType>
     <TargetFrameWork>netstandard2.0</TargetFrameWork>
   </PropertyGroup>

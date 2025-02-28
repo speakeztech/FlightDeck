@@ -16,12 +16,12 @@ initializeContext()
 // Information about the project to be used at NuGet and in AssemblyInfo files
 // --------------------------------------------------------------------------------------
 
-let project = "Fornax"
-let summary = "Fornax is a static site generator using type safe F# DSL to define page layouts"
+let project = "FlightDeck"
+let summary = "FlightDeck is a static site generator using type safe F# DSL to define page layouts"
 let nugetOrg = "https://api.nuget.org/v3/index.json"
-let gitOwner = "Ionide"
+let gitOwner = "houstonhaynes"
 let gitHome = "https://github.com/" + gitOwner
-let gitName = "Fornax"
+let gitName = "FlightDeck"
 let gitRaw = Environment.environVarOrDefault "gitRaw" ("https://raw.github.com/" + gitOwner)
 
 // --------------------------------------------------------------------------------------
@@ -62,34 +62,34 @@ Target.create "Clean" (fun _ ->
 )
 
 Target.create "Restore" (fun _ ->
-    DotNet.restore id "Fornax.sln"
+    DotNet.restore id "FlightDeck.sln"
 )
 
 Target.create "Build" (fun _ ->
-    DotNet.build id "Fornax.sln"
+    DotNet.build id "FlightDeck.sln"
 )
 
 Target.create "Publish" (fun _ ->
-    DotNet.publish (fun p -> {p with OutputPath = Some buildDir}) "src/Fornax"
+    DotNet.publish (fun p -> {p with OutputPath = Some buildDir}) "src/FlightDeck"
 )
 
 Target.create "Test" (fun _ ->
-    runTool "dotnet" @"run --project .\test\Fornax.Core.UnitTests\Fornax.Core.UnitTests.fsproj" "."
+    runTool "dotnet" @"run --project .\test\FlightDeck.Core.UnitTests\FlightDeck.Core.UnitTests.fsproj" "."
 )
 
 Target.create "TestTemplate" (fun _ ->
-    let templateDir = __SOURCE_DIRECTORY__ </> "src/Fornax.Template/"
-    let coreDllSource = buildDir </> "Fornax.Core.dll"
-    let coreDllDest = templateDir </> "_lib"  </> "Fornax.Core.dll"
+    let templateDir = __SOURCE_DIRECTORY__ </> "src/FlightDeck.Template/"
+    let coreDllSource = buildDir </> "FlightDeck.Core.dll"
+    let coreDllDest = templateDir </> "_lib"  </> "FlightDeck.Core.dll"
 
     try
         System.IO.File.Copy(coreDllSource, coreDllDest, true)
 
-        let newlyBuiltFornax = buildDir </> "Fornax.dll"
+        let newlyBuiltFlightDeck = buildDir </> "FlightDeck.dll"
 
         printfn "templateDir: %s" templateDir
 
-        runTool "dotnet" (sprintf "%s watch" newlyBuiltFornax) templateDir
+        runTool "dotnet" (sprintf "%s watch" newlyBuiltFlightDeck) templateDir
 
     finally
         File.delete coreDllDest
@@ -101,8 +101,8 @@ Target.create "TestTemplate" (fun _ ->
 
 Target.create "Pack" (fun _ ->
     [
-        "src/Fornax"
-        "src/Fornax.Core"
+        "src/FlightDeck"
+        "src/FlightDeck.Core"
     ]
     |> List.iter(
         DotNet.pack (fun p ->

@@ -973,7 +973,7 @@ type CSSProperties =
         | Text of props: HtmlProperties list * children: HtmlElement list
         | Tspan of props: HtmlProperties list * children: HtmlElement list
         | String of string
-        // https://github.com/ionide/Fornax/issues/104
+        // https://github.com/ionide/FlightDeck/issues/104
         | Custom of tagName: string * props: HtmlProperties list * children: HtmlElement list
 
         static member ToString tag =

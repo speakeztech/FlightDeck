@@ -1,10 +1,10 @@
 <Project>
     <PropertyGroup>
-        <Product>Fornax</Product>
-        <Description>Fornax is a static site generator using type safe F# DSL to define page layouts.</Description>
+        <Product>FlightDeck</Product>
+        <Description>FlightDeck is a static site generator using type safe F# DSL to define page layouts.</Description>
         <Authors>Krzysztof Cieslak</Authors>
         <PackageTags>f#, site-generator, html</PackageTags>
-        <PackageProjectUrl>https://github.com/Ionide/Fornax</PackageProjectUrl>
+        <PackageProjectUrl>https://github.com/Ionide/FlightDeck</PackageProjectUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <ChangelogFile>$(MSBuildThisFileDirectory)CHANGELOG.md</ChangelogFile>
         <PackageReadmeFile>README.md</PackageReadmeFile>

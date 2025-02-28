@@ -1,4 +1,4 @@
-module Fornax
+module FlightDeck
 
 open System
 open System.IO
@@ -15,9 +15,9 @@ open Suave.WebSocket
 open System.Reflection
 open Logger
 
-type FornaxExiter () =
+type FlightDeckExiter () =
     interface IExiter with
-        member x.Name = "fornax exiter"
+        member x.Name = "FlightDeck exiter"
         member x.Exit (msg, errorCode) =
             if errorCode = ErrorCode.HelpText then
                 printf "%s" msg
@@ -171,16 +171,16 @@ let router basePath =
 
 [<EntryPoint>]
 let main argv =
-    let parser = ArgumentParser.Create<Arguments>(programName = "fornax",errorHandler=FornaxExiter())
+    let parser = ArgumentParser.Create<Arguments>(programName = "FlightDeck",errorHandler=FlightDeckExiter())
 
     let results = parser.ParseCommandLine(inputs = argv).GetAllResults()
 
     if List.isEmpty results then
-        errorfn "No arguments provided.  Try 'fornax help' for additional details."
+        errorfn "No arguments provided.  Try 'FlightDeck help' for additional details."
         printfn "%s" <| parser.PrintUsage()
         1
     elif List.length results > 1 then
-        errorfn "More than one command was provided.  Please provide only a single command.  Try 'fornax help' for additional details."
+        errorfn "More than one command was provided.  Please provide only a single command.  Try 'FlightDeck help' for additional details."
         printfn "%s" <| parser.PrintUsage()
         1
     else
@@ -189,8 +189,8 @@ let main argv =
 
         match result with
         | Some (New newOptions) ->
-            // The path of Fornax.Core.dll, which is located where the dotnet tool is installed.
-            let corePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Fornax.Core.dll")
+            // The path of FlightDeck.Core.dll, which is located where the dotnet tool is installed.
+            let corePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FlightDeck.Core.dll")
 
             // Parse output flag and create a folder in the cwd to copy files to
             let outputDirectory = getOutputDirectory (newOptions.TryPostProcessResult(<@ Output @>, string)) cwd
@@ -199,15 +199,15 @@ let main argv =
             handleTemplate (newOptions.TryPostProcessResult(<@ Template @>, string)) (outputDirectory)
 
             // Create the _lib directory in the current folder.  It holds
-            // Fornax.Core.dll, which is used to provide Intellisense/autocomplete
+            // FlightDeck.Core.dll, which is used to provide Intellisense/autocomplete
             // in the .fsx files.
             Path.Combine(outputDirectory, "_lib")
             |> Directory.CreateDirectory
             |> ignore
 
-            // Copy the Fornax.Core.dll into _lib
-            // Some/most times Fornax.Core.dll already exists
-            File.Copy(corePath, outputDirectory + "/_lib/Fornax.Core.dll", true)
+            // Copy the FlightDeck.Core.dll into _lib
+            // Some/most times FlightDeck.Core.dll already exists
+            File.Copy(corePath, outputDirectory + "/_lib/FlightDeck.Core.dll", true)
             okfn "New project successfully created."
             0
         | Some Build ->
@@ -216,7 +216,7 @@ let main argv =
                 do generateFolder sc cwd false
                 0
             with
-            | FornaxGeneratorException message ->
+            | FlightDeckGeneratorException message ->
                 message |> stringFormatter |> errorfn
                 1
             | exn ->
@@ -233,7 +233,7 @@ let main argv =
                 try
                     do generateFolder sc cwd true
                 with
-                | FornaxGeneratorException message ->
+                | FlightDeckGeneratorException message ->
                     message |> stringFormatter |> errorfn 
                     waitingForChangesMessage |> stringFormatter |> informationfn
                 | exn ->

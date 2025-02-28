@@ -1,4 +1,4 @@
-#r "../../src/Fornax.Core/bin/Release/netstandard2.0/Fornax.Core.dll"
+#r "../../src/FlightDeck.Core/bin/Release/netstandard2.0/FlightDeck.Core.dll"
 #r "../_lib/Microsoft.Extensions.DependencyInjection.Abstractions.dll"
 #r "../_lib/Microsoft.Extensions.DependencyInjection.dll"
 #r "../_lib/dotless.Core.dll"

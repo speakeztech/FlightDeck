@@ -1,4 +1,4 @@
-module Fornax.Core.UnitTests
+module FlightDeck.Core.UnitTests
 
 open Expecto
 

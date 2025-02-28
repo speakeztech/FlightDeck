@@ -1,5 +1,5 @@
-#r "../_lib/Fornax.Core.dll"
-#if !FORNAX
+#r "../_lib/FlightDeck.Core.dll"
+#if !FlightDeck
 #load "../loaders/postloader.fsx"
 #load "../loaders/pageloader.fsx"
 #load "../loaders/globalloader.fsx"

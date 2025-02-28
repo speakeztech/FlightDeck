@@ -1,4 +1,4 @@
-#r "../../src/Fornax.Core/bin/Release/netstandard2.0/Fornax.Core.dll"
+#r "../../src/FlightDeck.Core/bin/Release/netstandard2.0/FlightDeck.Core.dll"
 #r "../_lib/Markdig.dll"
 
 open Markdig
