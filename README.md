@@ -4,12 +4,12 @@
     <img width="400" height="400" src="https://github.com/houstonhaynes/FlightDeck/blob/main/logo/FlightDeckMainLogoFullColor.svg?raw=true">
 </p>
 
-FlightDeck is a **scriptable static web site generator** using a type safe F# DSL to define page layouts. This adaptation was largely inspired by Hugo, but leans heavily on the [Markdig](https://github.com/xoofx/markdig/tree/master) C# library for CommonMark support. It also takes some inspiration from the opinions in the [SAFEr Template](https://github.com/Dzoukr/SAFEr.Template). While FlightDeck starts with minimal out-of-the-box JavaScript dependencies, it can be easily extended to include what you need for your site.
+FlightDeck is a **scriptable static web site generator** in a model akin to Hugo, but using a F# based DSL for type safety well defined page layouts. This adaptation from Fornax was largely inspired by Hugo, and leans heavily on the [Markdig](https://github.com/xoofx/markdig/tree/master) C# library for CommonMark support. It also takes some inspiration from the opinions in the [SAFEr Template](https://github.com/Dzoukr/SAFEr.Template). While FlightDeck starts with minimal out-of-the-box JavaScript dependencies, it can be easily extended to adapt to your needs.
 
 ## New Site Elements
 
 - 🌷 DaisyUI Theme Support
-- 🌬️ Tailwinds CSS classes
+- 🌬️ Tailwinds CSS styling
 - 💌 FontAwesome Free Icons (CDN)
 - 🌔 Dark/Light Theme Switch
 - ✨ Other pre-built responsive navigation and related elements
