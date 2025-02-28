@@ -6,13 +6,13 @@
 
 FlightDeck is a **scriptable static web site generator** using a type safe F# DSL to define page layouts. This adaptation was largely inspired by Hugo, but leans heavily on the [Markdig](https://github.com/xoofx/markdig/tree/master) C# library for CommonMark support. It also takes some inspiration from the opinions in the [SAFEr Template](https://github.com/Dzoukr/SAFEr.Template). While FlightDeck starts with minimal out-of-the-box JavaScript dependencies, it can be easily extended to include what you need for your site.
 
-## Boilerplate Web Site Structure
+## New Site Elements
 
-* DaisyUI Theme Support
-* Tailwinds CSS classes
-* FontAwesome Free Icons (CDN)
-* Dark/Light Theme Switch
-* Other pre-built responsive navigation and related elements
+- 🌷 DaisyUI Theme Support
+- 🌬️ Tailwinds CSS classes
+- 💌 FontAwesome Free Icons (CDN)
+- 🌔 Dark/Light Theme Switch
+- ✨ Other pre-built responsive navigation and related elements
 
 ## Working features
 
@@ -25,7 +25,7 @@ FlightDeck is a **scriptable static web site generator** using a type safe F# DS
 
 <img align="left" width="192" height="192" src="https://github.com/houstonhaynes/FlightDeck/blob/main/logo/Cieslak_avatar.jpg?raw=true">
 
-FlightDeck is a hard fork of [the Fornax project](https://github.com/ionide/Fornax) - an elegant creation of Kristof Cieslak that's part of the Ionide tooling suite - You can support Ionide here: [Open Collective](https://opencollective.com/ionide).
+FlightDeck is a hard fork of [the Fornax project](https://github.com/ionide/Fornax) - an elegant creation of Krzysztof Cieślak that's part of the Ionide tooling suite - You can support Ionide here: [Open Collective](https://opencollective.com/ionide).
 
 [![open collective backers](https://img.shields.io/opencollective/backers/ionide.svg?color=green)](https://opencollective.com/ionide)
 [![open collective sponsors](https://img.shields.io/opencollective/sponsors/ionide.svg?color=purple)](https://opencollective.com/ionide)
