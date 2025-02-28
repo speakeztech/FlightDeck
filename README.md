@@ -1,15 +1,37 @@
 # FlightDeck
 
-![Logo](/logo/FlightDeckMainLogoFullColor.svg)
+<p align="center">
+    <img width="400" height="400" src="https://github.com/houstonhaynes/FlightDeck/blob/main/logo/FlightDeckMainLogoFullColor.svg?raw=true">
+</p>
 
-FlightDeck is a **scriptable static site generator** using type safe F# DSL to define page layouts. While it is designed to minimize out-of-the-box JavaScript dependencies, it can be easily extended to suit your individual needs.
+FlightDeck is a **scriptable static web site generator** using a type safe F# DSL to define page layouts. This adaptation was largely inspired by Hugo, but leans heavily on the [Markdig](https://github.com/xoofx/markdig/tree/master) C# library for CommonMark support. It also takes some inspiration from the opinions in the [SAFEr Template](https://github.com/Dzoukr/SAFEr.Template). While FlightDeck starts with minimal out-of-the-box JavaScript dependencies, it can be easily extended to include what you need for your site.
+
+## Boilerplate Web Site Structure
+
+* DaisyUI Theme Support
+* Tailwinds CSS classes
+* FontAwesome Free Icons (CDN)
+* Dark/Light Theme Switch
+* Other pre-built responsive navigation and related elements
 
 ## Working features
 
 * Creating custom data loaders using `.fsx` files, meaning you can use anything you can imagine as a source of data for your site, not only predefined `.md` or `.yml` files
 * Creating custom generators using `.fsx` files, meaning you can generate any type of output you want
 * Dynamic configuration using `.fsx` file
-* Watch mode that rebuilds your page whenever you change data, or any script file.
+* "Watch mode" provides a hot reload function as you edit that rebuilds your page whenever you change data, or any script file. View your changes as you edit!
+
+## Project History 
+
+<img align="left" width="192" height="192" src="https://github.com/houstonhaynes/FlightDeck/blob/main/logo/Cieslak_avatar.jpg?raw=true">
+
+FlightDeck is a hard fork of [the Fornax project](https://github.com/ionide/Fornax) - an elegant creation of Kristof Cieslak that's part of the Ionide tooling suite - You can support Ionide here: [Open Collective](https://opencollective.com/ionide).
+
+[![open collective backers](https://img.shields.io/opencollective/backers/ionide.svg?color=green)](https://opencollective.com/ionide)
+[![open collective sponsors](https://img.shields.io/opencollective/sponsors/ionide.svg?color=purple)](https://opencollective.com/ionide)
+
+[![Open Collective](https://opencollective.com/ionide/donate/button.png?color=blue)](https://opencollective.com/ionide)
+
 
 ## Installation
 
@@ -209,13 +231,3 @@ The library is available under [MIT license](https://github.com/Ionide/FlightDec
 
 Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
 
-## Project History 
-
-<img align="left" width="100" height="100" src="http://www.fillmurray.com/100/100">
-
-FlightDeck is a hard fork of Fornax - an elegant creation of Kristof Cieslak that's part of the Ionide tooling suite - You can support Ionide here: [Open Collective](https://opencollective.com/ionide).
-
-[![open collective backers](https://img.shields.io/opencollective/backers/ionide.svg?color=blue)](https://opencollective.com/ionide)
-[![open collective sponsors](https://img.shields.io/opencollective/sponsors/ionide.svg?color=blue)](https://opencollective.com/ionide)
-
-[![Open Collective](https://opencollective.com/ionide/donate/button.png?color=blue)](https://opencollective.com/ionide)
