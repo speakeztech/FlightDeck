@@ -5,13 +5,13 @@ VisualStudioVersion = 17.5.33414.496
 MinimumVisualStudioVersion = 15.0.26124.0
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{69C50C6B-BF41-47FC-9237-B75F4D37AA3F}"
 EndProject
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Fornax", "src\Fornax\Fornax.fsproj", "{7FC34D4F-ECF8-41E7-AC7D-0E87A231C763}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "FlightDeck", "src\FlightDeck\FlightDeck.fsproj", "{7FC34D4F-ECF8-41E7-AC7D-0E87A231C763}"
 EndProject
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Fornax.Core", "src\Fornax.Core\Fornax.Core.fsproj", "{D3405270-64D1-4767-8504-1DACA863715F}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "FlightDeck.Core", "src\FlightDeck.Core\FlightDeck.Core.fsproj", "{D3405270-64D1-4767-8504-1DACA863715F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{E91F7551-B025-4B91-A2D2-66A02A531F41}"
 EndProject
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Fornax.Core.UnitTests", "test\Fornax.Core.UnitTests\Fornax.Core.UnitTests.fsproj", "{C5C16B9D-4CC9-4BD9-AD9D-996E670189BA}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "FlightDeck.Core.UnitTests", "test\FlightDeck.Core.UnitTests\FlightDeck.Core.UnitTests.fsproj", "{C5C16B9D-4CC9-4BD9-AD9D-996E670189BA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "project", "project", "{E7E971DB-8665-49C3-9841-20711BA2BD5A}"
 	ProjectSection(SolutionItems) = preProject
