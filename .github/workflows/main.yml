@@ -4,19 +4,22 @@ on: [push, pull_request]
 
 jobs:
   build:
-
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        dotnet: [6.0.428]
+        dotnet: ['6.0.428']
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3  # Updated from v2
     - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1.7.2
+      uses: actions/setup-dotnet@v3  # Updated from v1.7.2
       with:
         dotnet-version: ${{ matrix.dotnet }}
+    - name: Set .NET SDK architecture for macOS
+      if: matrix.os == 'macOS-latest'
+      run: |
+        echo "DOTNET_RUNTIME_IDENTIFIER=osx-x64" >> $GITHUB_ENV
     - name: Install local tools
       run: dotnet tool restore
     - name: Paket restore
@@ -26,4 +29,5 @@ jobs:
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v4.6.1
       with:
+        name: build-artifacts-${{ matrix.os }}
         path: out

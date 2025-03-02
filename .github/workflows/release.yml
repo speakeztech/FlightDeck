@@ -1,24 +1,20 @@
 name: Release
-
 on:
   push:
     tags:
     - 'v*'
-
 jobs:
   release:
     strategy:
       matrix:
-        dotnet: [6.0.428]
-
-    runs-on: ubuntu-20.04
-
+        dotnet: ['6.0.428']
+    runs-on: ubuntu-latest  # Updated from ubuntu-20.04
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3  # Updated from v2
       with:
         ref: ${{ github.head_ref }}
     - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1
+      uses: actions/setup-dotnet@v3  # Updated from v1
       with:
         dotnet-version: ${{ matrix.dotnet }}
     - name: Restore tools
@@ -32,6 +28,7 @@ jobs:
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v4.6.1
       with:
+        name: release-artifacts
         path: out
     - name: Create Release
       uses: ncipollo/release-action@v1
