@@ -9,7 +9,7 @@ jobs:
   release:
     strategy:
       matrix:
-        dotnet: [6.0.100]
+        dotnet: [6.0.428]
 
     runs-on: ubuntu-20.04
 
@@ -37,5 +37,5 @@ jobs:
       uses: ncipollo/release-action@v1
       with:
         artifacts: out/*.nupkg
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GH_TOKEN }}
         generateReleaseNotes: true
