@@ -30,7 +30,7 @@ jobs:
       env:
         nuget-key: ${{ secrets.NUGET_KEY }}
     - name: Upload a Build Artifact
-      uses: actions/upload-artifact@v2.3.1
+      uses: actions/upload-artifact@v4.6.1
       with:
         path: out
     - name: Create Release
