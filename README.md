@@ -4,24 +4,24 @@
     <img width="400" height="400" src="https://github.com/houstonhaynes/FlightDeck/blob/main/logo/FlightDeckMainLogoFullColor.svg?raw=true">
 </p>
 
-FlightDeck is a **scriptable static web site generator** in a model akin to Hugo, but using a F# based DSL for type safety well defined page layouts. This adaptation from Fornax was largely inspired by Hugo, and leans heavily on the [Markdig](https://github.com/xoofx/markdig/tree/master) C# library for CommonMark support. It also takes some inspiration from the opinions in the [SAFEr Template](https://github.com/Dzoukr/SAFEr.Template). While FlightDeck starts with minimal out-of-the-box JavaScript dependencies, it can be easily extended to adapt to your needs.
+FlightDeck is a **scriptable static web site generator** in a model akin to Hugo, but using a F# based DSL for type safety well defined page layouts. This adaptation leans heavily on the [Markdig](https://github.com/xoofx/markdig/tree/master) C# library for CommonMark support, which means it will also depart from Hugo conventions and instead adapt to those standards where they diverge. This tool also takes some inspiration from the opinions in the [SAFEr Template](https://github.com/Dzoukr/SAFEr.Template). While FlightDeck starts with minimal out-of-the-box JavaScript dependencies, it can be easily extended to adapt to your needs.
 
 ## New Site Elements
 
-- 🌷 DaisyUI Theme Support
-- 🌬️ Tailwinds CSS styling
-- 💌 FontAwesome Free Icons (CDN)
-- 🌔 Dark/Light Theme Switch
-- ✨ Other pre-built responsive navigation and related elements
+- 🌬️ [Tailwinds](https://tailwindcss.com/) CSS throughout
+- 🌷 [DaisyUI](https://daisyui.com/) Theme & Component Support
+- ❌ [HTMX](https://htmx.org/) For dynamic page rendering
+- 💌 [FontAwesome](https://fontawesome.com/) Free Icons (easily adapted to use pro)
+- 🧭 Other pre-built responsive navigation and related elements
 
-## Working features
+## F# Tooling
 
-* Creating custom data loaders using `.fsx` files, meaning you can use anything you can imagine as a source of data for your site, not only predefined `.md` or `.yml` files
-* Creating custom generators using `.fsx` files, meaning you can generate any type of output you want
-* Dynamic configuration using `.fsx` file
-* "Watch mode" provides a hot reload function as you edit that rebuilds your page whenever you change data, or any script file. View your changes as you edit!
+- Create custom data loaders using `.fsx` files, meaning you can use anything you can imagine as a source of data for your site, not only predefined `.md` or `.yml` files
+- Creating custom generators using `.fsx` files, meaning you can generate any type of output you want
+- Dynamic configuration using `.fsx` file
+- "Watch mode" provides a 🔥 hot reload function as you edit that rebuilds your page whenever you change data, or any script file. View your changes as you edit! ⚡
 
-## Project History 
+## Project History
 
 <img align="left" width="192" height="192" src="https://github.com/houstonhaynes/FlightDeck/blob/main/logo/Cieslak_avatar.jpg?raw=true">
 
@@ -32,12 +32,11 @@ FlightDeck is a hard fork of [the Fornax project](https://github.com/ionide/Forn
 
 [![Open Collective](https://opencollective.com/ionide/donate/button.png?color=blue)](https://opencollective.com/ionide)
 
-
 ## Installation
 
 FlightDeck is released as a global .Net Core tool. You can install it with `dotnet tool install FlightDeck -g`
 
-## CLI Application
+## Using the CLI Application
 
 The main functionality of FlightDeck comes from CLI applications that lets user scaffold, and generate webpages.
 
@@ -50,7 +49,7 @@ The main functionality of FlightDeck comes from CLI applications that lets user 
 
 ## Getting started
 
-Easiest way to get started with `FlightDeck` is running `FlightDeck new` and then `FlightDeck watch` - this will create a fairly minimal blog site template, start `FlightDeck` in watch mode and then start a webserver. Then you can go to `localhost:8080` in your browser to see the page, and edit the scaffolded files in an editor to make changes. Additionally, you can take a look at the `samples` folder in this repository - it has a couple more `loaders` and `generators` that you may use in your website.
+The easiest way to get started with `FlightDeck` is running `FlightDeck new` and then `FlightDeck watch` from the generated project - this will create a minimal blog site template. Then you can go to `localhost:8080` in your browser to see the page, and edit the scaffolded `.md` files in an editor to make changes. Additionally, you can take a look at the `samples` folder in this repository - it has alternate `loaders` and `generators` that you may use in your website.
 
 ## Website definition
 

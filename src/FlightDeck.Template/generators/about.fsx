@@ -1,4 +1,4 @@
-#r "../_lib/FlightDeck.Core.dll"
+#r "nuget: Florax.Core, 0.19.0"
 #load "layout.fsx"
 
 open Html

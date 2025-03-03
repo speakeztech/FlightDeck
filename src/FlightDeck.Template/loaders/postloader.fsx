@@ -1,5 +1,5 @@
 #r "../_lib/FlightDeck.Core.dll"
-#r "../_lib/Markdig.dll"
+#r "nuget: Markdig, 0.40.0"
 
 open System.IO
 open Markdig

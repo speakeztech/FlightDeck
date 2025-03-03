@@ -1,14 +1,28 @@
 <Project>
     <PropertyGroup>
+        <Version>0.2.0</Version>
         <Product>FlightDeck</Product>
-        <Description>FlightDeck is a static site generator using type safe F# DSL to define page layouts.</Description>
-        <Authors>Krzysztof Cieslak</Authors>
+        <Description>FlightDeck is a Hugo inspired static site generator using type safe F# DSL to define page layouts.</Description>
+        <Authors>Krzysztof Cieslak, Houston Haynes, and FlightDeck Contributors</Authors>
         <PackageTags>f#, site-generator, html</PackageTags>
-        <PackageProjectUrl>https://github.com/Ionide/FlightDeck</PackageProjectUrl>
+        <PackageProjectUrl>https://github.com/speakez-llc/FlightDeck</PackageProjectUrl>
+        <RepositoryBranch>main</RepositoryBranch>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <ChangelogFile>$(MSBuildThisFileDirectory)CHANGELOG.md</ChangelogFile>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryType>git</RepositoryType>
+        <Copyright>Copyright 2025 Fornax and FlightDeck contributors</Copyright>
+        <!-- local build uses number unique by day -->
+        <PackageVersion Condition="'$(GITHUB_ACTIONS)' != 'true'">$(Version)-local-$([System.DateTime]::Now.ToString(`yyMMdd`))</PackageVersion>
+        <PackageVersion Condition="'$(GITHUB_ACTIONS)' == 'true'">$(Version)</PackageVersion>
+        
+        <PackageOutputPath>$(MSBuildThisFileDirectory)bin/packages</PackageOutputPath>
+        <NuspecProperties>Authors=$(Authors);Owners=$(Owners);ProjectId=$(MSBuildProjectName);PackageVersion=$(PackageVersion);TorchSharpVersion=$(TorchSharpVersion)</NuspecProperties>
     </PropertyGroup>
+    <Target Name="Check" BeforeTargets="PrepareForBuild"
+          Condition="'$(APPVEYOR_REPO_TAG)' != '' AND '$(APPVEYOR_REPO_TAG_NAME)' != '' AND '$(APPVEYOR_REPO_TAG_NAME)' != '$(Version)'">
+      <Error Test="mismatch between repo tag '$(APPVEYOR_REPO_TAG_NAME)' and version '$(Version)' in msbuild, refusing to build package" />
+    </Target>
     <ItemGroup Condition="'$(IsPackable)' =='true'">
         <None Include="$(MSBuildThisFileDirectory)/README.md" Pack="true" PackagePath="/" />
     </ItemGroup>

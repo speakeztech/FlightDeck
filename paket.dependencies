@@ -14,6 +14,7 @@ nuget Dotnet.ReproducibleBuilds copy_local: true
 nuget Argu
 nuget Suave
 nuget LibGit2Sharp
+nuget Markdig ~> 0.40.0
 
 group Build
   source https://www.nuget.org/api/v2

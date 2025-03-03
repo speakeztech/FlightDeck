@@ -1,15 +1,22 @@
 # Changelog
 
-## [Unreleased]
+## 0.20.0
 
 ### Added
 
+Markdig dependency
+Full Markdig pipeline for all components
+Tailwinds refs
+DaisyUI refs
+FontAwesome refs
 
 ### Changed
 
+Detail added to Build.Props
 
 ### Fixed
 
+Build pipeline (MacOS)
 
 ## 0.15.1 - 2025-02-28
 
