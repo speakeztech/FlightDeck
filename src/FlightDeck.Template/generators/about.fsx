@@ -1,4 +1,4 @@
-#r "nuget: Florax.Core, 0.19.0"
+#r "nuget: Fornax.Core, 0.15.1"
 #load "layout.fsx"
 
 open Html
