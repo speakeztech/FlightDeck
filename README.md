@@ -10,7 +10,7 @@ FlightDeck is a **scriptable static web site generator** in a model akin to Hugo
 
 - 🌬️ [Tailwinds](https://tailwindcss.com/) CSS throughout
 - 🌷 [DaisyUI](https://daisyui.com/) Theme & Component Support
-- ❌ [HTMX](https://htmx.org/) For dynamic page rendering
+- <b><<span style="color:cornflowerblue;">/</span>></b> [HTMX](https://htmx.org/) For dynamic page rendering
 - 💌 [FontAwesome](https://fontawesome.com/) Free Icons (easily adapted to use pro)
 - 🧭 Other pre-built responsive navigation and related elements
 
