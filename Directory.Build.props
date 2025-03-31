@@ -1,6 +1,6 @@
 <Project>
     <PropertyGroup>
-        <Version>0.2.0</Version>
+        <Version>0.20.0</Version>
         <Product>FlightDeck</Product>
         <Description>FlightDeck is a Hugo inspired static site generator using type safe F# DSL to define page layouts.</Description>
         <Authors>Krzysztof Cieslak, Houston Haynes, and FlightDeck Contributors</Authors>
