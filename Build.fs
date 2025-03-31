@@ -113,19 +113,15 @@ Target.create "Pack" (fun _ ->
 )
 
 Target.create "Push" (fun _ ->
-    // Debug: Print all environment variables
-    System.Environment.GetEnvironmentVariables()
-    |> Seq.cast<System.Collections.DictionaryEntry>
-    |> Seq.iter (fun entry -> 
-        printfn "%s: %s" (entry.Key.ToString()) (entry.Value.ToString())
-    )
-
-    let key =
-        match getBuildParam "NUGET_KEY" with
-        | s when not (isNullOrWhiteSpace s) -> s
-        | _ -> 
-            printfn "NuGet key not found in environment variables"
+    let key = 
+        match System.Environment.GetEnvironmentVariable("NUGET_KEY") with
+        | null -> 
+            printfn "ERROR: Cannot retrieve NuGet key from environment"
             failwith "NuGet API key is required for pushing packages"
+        | s when s.Trim() = "" -> 
+            printfn "ERROR: NuGet key is an empty string"
+            failwith "NuGet API key is required for pushing packages"
+        | s -> s
     
     try
         DotNet.nugetPush (fun p ->
