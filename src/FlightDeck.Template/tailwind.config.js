@@ -1,0 +1,102 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* Import fonts from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap');
+
+:root {
+    --transition-duration: 0.4s;
+    --transition-timing-function: ease-in-out;
+}
+
+html {
+    transition: background-color var(--transition-duration) var(--transition-timing-function),
+    color var(--transition-duration) var(--transition-timing-function);
+}
+
+/* Theme toggle styles */
+.swap-rotate .swap-on {
+    transform: rotate(0deg);
+    opacity: 0;
+}
+
+.swap-rotate .swap-off {
+    opacity: 1;
+}
+
+.swap-rotate input:checked ~ .swap-on {
+    opacity: 1;
+}
+
+.swap-rotate input:checked ~ .swap-off {
+    opacity: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Open Sans', sans-serif;
+    font-weight: 600;
+}
+
+html, body {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 16px;
+}
+
+.prose {
+    max-width: 100%;
+}
+
+/* Hero section styling */
+.hero {
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    min-height: 400px;
+}
+
+/* Card styling */
+.card {
+    margin-top: -100px;
+    z-index: 10;
+}
+
+/* Responsive fixes */
+@media screen and (max-width: 768px) {
+.content {
+        max-width: 100%;
+        line-height: 1.6;
+    }
+}
+
+.card-title {
+    font-size: 1.8rem;
+    font-weight: 600;
+    line-height: 1.8;
+}
+
+/* Content styles */
+.prose img {
+    border-radius: 0.5rem;
+}
+
+.articles {
+    margin-top: -150px;
+    z-index: 10;
+    position: relative;
+}
+
+.card-body {
+    padding: 2rem;
+}
+
+.content article-body {
+    margin: 0;
+    padding: 0 1rem;
+    line-height: 1.6;
+    width: 100%;
+}
+
+/* Hide first heading in content for better styling */
+.prose h1:first-child {
+    display: none;
+}

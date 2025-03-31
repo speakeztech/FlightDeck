@@ -5,6 +5,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>FlightDeck</ToolCommandName>
     <RollForward>LatestMajor</RollForward>
+    <DisableChangelogValidation>true</DisableChangelogValidation>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FlightDeck.Core\FlightDeck.Core.fsproj" />
@@ -25,6 +26,15 @@
       LinkBase="blogTemplate"
     />
     <None Include="paket.references" />
+    <Content Update="..\FlightDeck.Template\tailwind.config.js">
+      <Link>blogTemplate\tailwind.config.js</Link>
+    </Content>
+    <Content Update="..\FlightDeck.Template\postcss.config.js">
+      <Link>blogTemplate\postcss.config.js</Link>
+    </Content>
+    <Content Update="..\FlightDeck.Template\package.json">
+      <Link>blogTemplate\package.json</Link>
+    </Content>
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>
