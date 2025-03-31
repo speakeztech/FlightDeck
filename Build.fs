@@ -118,21 +118,24 @@ Target.create "Push" (fun _ ->
         | null -> 
             match System.Environment.GetEnvironmentVariable("nuget-key") with
             | null ->
-                printfn "ERROR: Cannot retrieve NuGet key from environment"
+                printfn "ERROR: No NuGet key found in environment variables"
                 failwith "NuGet API key is required for pushing packages"
             | s -> s
         | s -> s
     
     try
+        printfn "Attempting to push packages with key for speakez-llc"
         DotNet.nugetPush (fun p ->
             { p with
                 PushParams = { p.PushParams with
                                 ApiKey = Some key
-                                Source = Some nugetOrg } }
+                                Source = Some nugetOrg 
+                                SkipDuplicate = Some true } }
         ) $"{packageDir}/*.nupkg"
     with
     | ex -> 
         printfn "NuGet push failed: %s" ex.Message
+        printfn "Exception details: %A" ex
         reraise()
 )
 
