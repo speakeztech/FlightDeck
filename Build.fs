@@ -116,11 +116,11 @@ Target.create "Push" (fun _ ->
     let key = 
         match System.Environment.GetEnvironmentVariable("NUGET_KEY") with
         | null -> 
-            printfn "ERROR: Cannot retrieve NuGet key from environment"
-            failwith "NuGet API key is required for pushing packages"
-        | s when s.Trim() = "" -> 
-            printfn "ERROR: NuGet key is an empty string"
-            failwith "NuGet API key is required for pushing packages"
+            match System.Environment.GetEnvironmentVariable("nuget-key") with
+            | null ->
+                printfn "ERROR: Cannot retrieve NuGet key from environment"
+                failwith "NuGet API key is required for pushing packages"
+            | s -> s
         | s -> s
     
     try
