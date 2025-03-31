@@ -106,7 +106,7 @@ let loader (projectRoot: string) (siteContent: SiteContents) =
 `Generator` is an F# script responsible for generating output of the FlightDeck process. This is usually `.html` file, but can be anything else - actually `generator` API just requires to return `string` that will be saved to a file. Generators are, again, plain F# functions that as input takes `SiteContents`, absolute path to the page root, relative path to the file that's currently processed (may be empty for the global generators) and returns `string`:
 
 ```fsharp
-#r "../_lib/FlightDeck.Core.dll"
+#r "nuget: Fornax.Core, 0.15.1"
 #if !FlightDeck
 #load "../loaders/postloader.fsx"
 #endif
@@ -137,7 +137,7 @@ let generate (ctx : SiteContents) (projectRoot: string) (page: string) =
 `Configuration` is an F# script file that defines when which analyzers need to be run, and how to save its output. A `Config.fsx` file needs to be put in the root of your site project (the place from which you run the `FlightDeck` CLI tool)
 
 ```fsharp
-#r "../_lib/FlightDeck.Core.dll"
+#r "nuget: Fornax.Core, 0.15.1"
 
 open Config
 open System.IO

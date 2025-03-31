@@ -1,4 +1,4 @@
-#r "../_lib/FlightDeck.Core.dll"
+#r "nuget: Fornax.Core, 0.15.1"
 
 open System.IO
 
