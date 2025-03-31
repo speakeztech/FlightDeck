@@ -122,7 +122,6 @@ Target.create "Push" (fun _ ->
             | _ ->
                 printfn "NuGet key not found in environment variables"
                 failwith "NuGet API key is required for pushing packages"
-    
     try
         DotNet.nugetPush (fun p ->
             { p with
