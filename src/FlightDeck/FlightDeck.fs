@@ -260,7 +260,7 @@ html {
     if Directory.Exists(generatorsDir) then
         let tailwindFsxPath = Path.Combine(generatorsDir, "tailwind.fsx")
         let tailwindFsxContent = 
-            """#r "nuget: Fornax.Core, 0.15.1"
+            """#r "nuget: FlightDeck.Core, 0.20.0"
 
 open System
 open System.IO

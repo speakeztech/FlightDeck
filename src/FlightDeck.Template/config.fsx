@@ -1,4 +1,4 @@
-#r "nuget: Fornax.Core, 0.15.1"
+#r "nuget: FlightDeck.Core, 0.20.0"
 
 open Config
 open System.IO
