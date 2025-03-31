@@ -114,7 +114,7 @@ Target.create "Pack" (fun _ ->
 
 Target.create "Push" (fun _ ->
     let key =
-        match getBuildParam "nuget-key" with
+        match getBuildParam "NUGET_KEY" with
         | s when not (isNullOrWhiteSpace s) -> s
         | _ -> UserInput.getUserPassword "NuGet Key: "
     DotNet.nugetPush (fun p ->
