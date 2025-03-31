@@ -19,7 +19,7 @@ initializeContext()
 let project = "FlightDeck"
 let summary = "FlightDeck is a static site generator using type safe F# DSL to define page layouts"
 let nugetOrg = "https://api.nuget.org/v3/index.json"
-let gitOwner = "houstonhaynes"
+let gitOwner = "speakez-llc"
 let gitHome = "https://github.com/" + gitOwner
 let gitName = "FlightDeck"
 let gitRaw = Environment.environVarOrDefault "gitRaw" ("https://raw.github.com/" + gitOwner)
