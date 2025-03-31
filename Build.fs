@@ -129,9 +129,8 @@ Target.create "Push" (fun _ ->
             { p with
                 PushParams = { p.PushParams with
                                 ApiKey = Some key
-                                Source = Some nugetOrg 
-                                SkipDuplicate = Some true } }
-        ) $"{packageDir}/*.nupkg"
+                                Source = Some nugetOrg } }
+        ) $"{packageDir}/*.nupkg --skip-duplicate"
     with
     | ex -> 
         printfn "NuGet push failed: %s" ex.Message
