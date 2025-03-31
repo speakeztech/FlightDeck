@@ -113,6 +113,9 @@ Target.create "Pack" (fun _ ->
 )
 
 Target.create "Push" (fun _ ->
+    let packages = !! $"{packageDir}/*.nupkg"
+    printfn "Packages to push: %A" packages
+
     let key = 
         match System.Environment.GetEnvironmentVariable("NUGET_KEY") with
         | null -> 
@@ -123,19 +126,19 @@ Target.create "Push" (fun _ ->
             | s -> s
         | s -> s
     
-    try
-        printfn "Attempting to push packages with key for speakez-llc"
-        DotNet.nugetPush (fun p ->
-            { p with
-                PushParams = { p.PushParams with
-                                ApiKey = Some key
-                                Source = Some nugetOrg } }
-        ) $"{packageDir}/*.nupkg --skip-duplicate"
-    with
-    | ex -> 
-        printfn "NuGet push failed: %s" ex.Message
-        printfn "Exception details: %A" ex
-        reraise()
+    packages |> Seq.iter (fun pkg ->
+        try
+            printfn "Pushing package: %s" pkg
+            DotNet.nugetPush (fun p ->
+                { p with
+                    PushParams = { p.PushParams with
+                                    ApiKey = Some key
+                                    Source = Some nugetOrg } }
+            ) pkg
+        with
+        | ex -> 
+            printfn "Failed to push package %s: %s" pkg ex.Message
+    )
 )
 
 // --------------------------------------------------------------------------------------
