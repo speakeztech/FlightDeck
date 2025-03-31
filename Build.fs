@@ -116,13 +116,21 @@ Target.create "Push" (fun _ ->
     let key =
         match getBuildParam "NUGET_KEY" with
         | s when not (isNullOrWhiteSpace s) -> s
-        | _ -> UserInput.getUserPassword "NuGet Key: "
-    DotNet.nugetPush (fun p ->
-        { p with
-            PushParams = { p.PushParams with
+        | _ -> 
+            printfn "NuGet key not found in environment variables"
+            failwith "NuGet API key is required for pushing packages"
+    
+    try
+        DotNet.nugetPush (fun p ->
+            { p with
+                PushParams = { p.PushParams with
                                 ApiKey = Some key
                                 Source = Some nugetOrg } }
-    ) $"{packageDir}/*.nupkg"
+        ) $"{packageDir}/*.nupkg"
+    with
+    | ex -> 
+        printfn "NuGet push failed: %s" ex.Message
+        reraise()
 )
 
 // --------------------------------------------------------------------------------------
