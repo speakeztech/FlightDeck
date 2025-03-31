@@ -113,6 +113,13 @@ Target.create "Pack" (fun _ ->
 )
 
 Target.create "Push" (fun _ ->
+    // Debug: Print all environment variables
+    System.Environment.GetEnvironmentVariables()
+    |> Seq.cast<System.Collections.DictionaryEntry>
+    |> Seq.iter (fun entry -> 
+        printfn "%s: %s" (entry.Key.ToString()) (entry.Value.ToString())
+    )
+
     let key =
         match getBuildParam "NUGET_KEY" with
         | s when not (isNullOrWhiteSpace s) -> s
