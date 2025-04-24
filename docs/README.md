@@ -27,6 +27,9 @@ Outlines the build pipeline, deployment options, continuous integration, and mon
 ### [06 MVU-SolidJS Architecture.md](./06%20MVU-SolidJS%20Architecture.md)
 Describes the implementation of the Model-View-Update (MVU) architectural pattern using SolidJS in a Falco-based web application. This document explains how to combine server-rendered pages with client-side interactivity while maintaining state across page transitions.
 
+### [07 Custom Shape Masks.md](./07%20Custom%20Shape%Masks.md)
+Provides a road map for creating shape masks for creative display of images and other layered visual elements on the slide.
+
 ## Using This Documentation
 
 These documents should be read in sequence for a comprehensive understanding of the FlightDeck architecture, though each document can also stand alone for reference on specific aspects. Key diagrams are provided in Mermaid format for easier visualization of architectural concepts.
