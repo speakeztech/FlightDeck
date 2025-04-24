@@ -2,7 +2,7 @@
 
 ## Overview
 
-This memo outlines an approach for implementing a publish/subscribe (pub/sub) mechanism with SQLite for the FlightDeck event sourcing system. While SQLite lacks native pub/sub capabilities like PostgreSQL's LISTEN/NOTIFY, we can implement an efficient solution that works well with the existing architecture.
+This memo outlines an approach for implementing a publish/subscribe (pub/sub) mechanism with SQLite for the FlightDeck event sourcing system. While SQLite lacks native pub/sub capabilities like PostgreSQL's LISTEN/NOTIFY, we can implement an efficient real-time solution that works well with the existing architecture, focusing on WebSockets and Server-Sent Events (SSE).
 
 ## Architecture
 
@@ -24,45 +24,144 @@ sequenceDiagram
     DB-->>Store: Confirm write
     Store->>Bus: Publish event
     Bus->>Sub: Notify subscribers
-    Bus->>Client: Update UI (if subscribed)
+    Bus->>Client: Push update (WebSocket/SSE)
 ```
 
 ## Implementation Options
 
-### Option 1: Client-Side Polling with SolidJS Signals
+### Option 1: WebSockets with SQLite Change Notification
 
-The simplest approach leverages SolidJS's reactive system with efficient polling:
+WebSockets provide full-duplex communication between client and server, allowing real-time updates:
+
+```fsharp
+// Server-side WebSocket handler in Falco
+let webSocketHandler (webSocket: WebSocket) (context: HttpContext) = task {
+    // Track active connection
+    let connectionId = Guid.NewGuid().ToString()
+    
+    // Add to active connections
+    EventBus.addConnection connectionId webSocket
+    
+    // Set up receiving loop to handle client messages
+    let buffer = Array.zeroCreate<byte> 4096
+    let mutable receiving = true
+    
+    while receiving do
+        try
+            let! result = webSocket.ReceiveAsync(
+                ArraySegment(buffer), CancellationToken.None)
+            
+            if result.CloseStatus.HasValue then
+                // Client closed connection
+                receiving <- false
+                EventBus.removeConnection connectionId
+                
+                let! _ = webSocket.CloseAsync(
+                    result.CloseStatus.Value,
+                    result.CloseStatusDescription,
+                    CancellationToken.None)
+                ()
+            elif result.MessageType = WebSocketMessageType.Text then
+                // Process client message if needed
+                let message = Encoding.UTF8.GetString(buffer, 0, result.Count)
+                // Handle client message if needed
+        with
+        | ex ->
+            // Handle error
+            receiving <- false
+            EventBus.removeConnection connectionId
+    }
+
+// Event bus implementation
+module EventBus =
+    // Active WebSocket connections
+    let private connections = ConcurrentDictionary<string, WebSocket>()
+    
+    // Add a new connection
+    let addConnection id socket =
+        connections.TryAdd(id, socket) |> ignore
+    
+    // Remove a connection
+    let removeConnection id =
+        connections.TryRemove(id) |> ignore
+    
+    // Publish event to all connections
+    let publishEvent (event: Event<'T>) =
+        let eventJson = JsonSerializer.Serialize(event)
+        let eventBytes = Encoding.UTF8.GetBytes(eventJson)
+        
+        async {
+            // Send to all connected clients
+            for KeyValue(id, socket) in connections do
+                if socket.State = WebSocketState.Open then
+                    try
+                        do! socket.SendAsync(
+                            ArraySegment(eventBytes),
+                            WebSocketMessageType.Text,
+                            true,
+                            CancellationToken.None) |> Async.AwaitTask
+                    with
+                    | _ ->
+                        // Handle failed send, possibly remove connection
+                        removeConnection id
+        } |> Async.Start
+
+// Modify event processor to publish events
+let eventProcessor = MailboxProcessor<EventProcessingMessage>.Start(fun inbox ->
+    let rec loop () = async {
+        let! msg = inbox.Receive()
+        
+        match msg with
+        | AppendEvent (streamId, event) ->
+            use conn = getConnection()
+            match appendEvent conn streamId (Some event.Version) event with
+            | Ok newVersion -> 
+                // Broadcast to all connected clients
+                EventBus.publishEvent { event with Version = newVersion }
+            | Error err -> 
+                printfn "Error appending event: %s" err
+                
+        // Other message handlers...
+        
+        return! loop()
+    }
+    
+    loop()
+)
+```
+
+#### Client-side SolidJS implementation:
 
 ```typescript
 // In your SolidJS component
-import { createSignal, createResource, createEffect } from 'solid-js';
+import { createSignal, onMount, onCleanup } from 'solid-js';
 
 function EventStreamComponent() {
-  const [lastEventId, setLastEventId] = createSignal(0);
+  const [events, setEvents] = createSignal([]);
+  let socket = null;
   
-  // Resource that fetches new events
-  const [events] = createResource(lastEventId, async (id) => {
-    const response = await fetch(`/api/events?after=${id}`);
-    const newEvents = await response.json();
+  onMount(() => {
+    // Connect to WebSocket
+    socket = new WebSocket(`ws://${window.location.host}/api/events`);
     
-    if (newEvents.length > 0) {
-      // Update the last seen event ID
-      setLastEventId(newEvents[newEvents.length - 1].id);
-    }
+    // Handle incoming events
+    socket.onmessage = (event) => {
+      const newEvent = JSON.parse(event.data);
+      setEvents(prev => [...prev, newEvent]);
+      
+      // Apply event to application state
+      applyEvent(newEvent);
+    };
     
-    return newEvents;
-  }, { 
-    // Start polling immediately but back off when no new events
-    refreshInterval: (info) => 
-      info.value?.length > 0 ? 1000 : 5000  
+    socket.onclose = () => {
+      // Handle reconnection logic
+      console.log('WebSocket connection closed');
+    };
   });
   
-  // Effect that processes new events
-  createEffect(() => {
-    const currentEvents = events();
-    if (currentEvents?.length) {
-      // Apply events to local state
-      applyEvents(currentEvents);
+  onCleanup(() => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.close();
     }
   });
   
@@ -71,65 +170,19 @@ function EventStreamComponent() {
 ```
 
 #### Advantages:
-- Simple implementation
-- No server-side changes needed
-- Automatically adjusts polling frequency based on activity
-- Leverages SolidJS's fine-grained reactivity
+- True real-time communication
+- Bidirectional (client can send messages too)
+- Efficient for frequent updates
+- Reduced HTTP overhead
 
 #### Disadvantages:
-- Increased HTTP requests
-- Slight delay in updates (bounded by polling interval)
+- More complex server implementation
+- Requires managing WebSocket connections
+- May require fallback for environments where WebSockets are blocked
 
-### Option 2: WebSockets with SQLite Change Notification
+### Option 2: Server-Sent Events (SSE)
 
-For more real-time updates, we can implement a WebSocket server that monitors SQLite changes:
-
-```fsharp
-// Server-side code
-let eventMonitor = MailboxProcessor<EventMonitorMessage>.Start(fun inbox ->
-    // Track connected clients
-    let clients = ResizeArray<WebSocket>()
-    
-    // Set up SQLite connection with change hooks
-    let connection = new SQLiteConnection(connectionString)
-    connection.Update += (sender, e) -> 
-        match e.Table with
-        | "events" -> 
-            // Fetch the new event
-            let event = getEvent connection e.RowId
-            // Broadcast to all connected clients
-            for client in clients do
-                sendEventToClient client event
-    
-    let rec loop() = async {
-        let! msg = inbox.Receive()
-        
-        match msg with
-        | AddClient client -> 
-            clients.Add(client)
-        | RemoveClient client -> 
-            clients.Remove(client) |> ignore
-            
-        return! loop()
-    }
-    
-    loop()
-)
-```
-
-#### Advantages:
-- True real-time updates
-- Reduced network traffic
-- Better user experience
-
-#### Disadvantages:
-- More complex implementation
-- Requires WebSocket server
-- Challenges with SQLite's connection model
-
-### Option 3: Server-Side Events (SSE)
-
-A middle-ground approach using Server-Sent Events:
+Server-Sent Events provide a simpler one-way channel from server to client:
 
 ```fsharp
 // In your Falco handler
@@ -147,92 +200,160 @@ let eventStreamHandler : HttpHandler =
             |> Option.ofObj 
             |> Option.map int 
             |> Option.defaultValue 0
-            
+        
+        // Create a connection ID
+        let connectionId = Guid.NewGuid().ToString()
+        
         // Create a cancellation token source
         let cts = new CancellationTokenSource()
         
-        async {
-            // Set up a polling loop
-            while not cts.IsCancellationRequested do
-                use conn = new SQLiteConnection(connectionString)
-                conn.Open()
-                
-                // Get new events
-                let events = getEventsAfter conn lastEventId
-                
-                if not (List.isEmpty events) then
-                    // Send each event to the client
-                    for event in events do
-                        let serialized = JsonSerializer.Serialize(event)
-                        let data = $"id: {event.Id}\ndata: {serialized}\n\n"
-                        do! response.WriteAsync(data, cts.Token) |> Async.AwaitTask
-                        
-                    // Flush the response
-                    do! response.Body.FlushAsync(cts.Token) |> Async.AwaitTask
-                    
-                // Wait before polling again
-                do! Async.Sleep(1000)
-        }
-        |> Async.Start
+        // Add this connection to the event bus
+        EventBus.addConnection connectionId (fun event ->
+            // Format event as SSE
+            let serialized = JsonSerializer.Serialize(event)
+            let data = $"id: {event.Id}\ndata: {serialized}\n\n"
+            
+            // Send event to client
+            response.WriteAsync(data, cts.Token).ConfigureAwait(false).GetAwaiter().GetResult()
+            response.Body.FlushAsync(cts.Token).ConfigureAwait(false).GetAwaiter().GetResult()
+        )
         
-        Task.CompletedTask
+        // Handle client disconnect
+        ctx.RequestAborted.Register(fun () ->
+            EventBus.removeConnection connectionId
+            cts.Cancel()
+        ) |> ignore
+        
+        // Keep connection alive until client disconnects
+        TaskUtils.waitForever()
+
+// Modified Event Bus for SSE
+module EventBus =
+    // Type for event callback
+    type EventCallback = Event<obj> -> unit
+    
+    // Active SSE connections
+    let private connections = ConcurrentDictionary<string, EventCallback>()
+    
+    // Add a new connection
+    let addConnection id callback =
+        connections.TryAdd(id, callback) |> ignore
+    
+    // Remove a connection
+    let removeConnection id =
+        connections.TryRemove(id) |> ignore
+    
+    // Publish event to all connections
+    let publishEvent (event: Event<'T>) =
+        // Convert to object event (type erasure)
+        let objEvent = {
+            Id = event.Id
+            StreamId = event.StreamId
+            Version = event.Version
+            EventType = event.EventType
+            Data = event.Data :> obj
+            Metadata = event.Metadata
+        }
+        
+        // Send to all connected clients
+        for KeyValue(_, callback) in connections do
+            try
+                callback objEvent
+            with
+            | ex -> 
+                // Log error but continue with other connections
+                printfn "Error sending event: %s" ex.Message
+```
+
+#### Client-side SolidJS implementation:
+
+```typescript
+// In your SolidJS component
+import { createSignal, onMount, onCleanup } from 'solid-js';
+
+function EventStreamComponent() {
+  const [events, setEvents] = createSignal([]);
+  let eventSource = null;
+  
+  onMount(() => {
+    // Connect to SSE endpoint
+    eventSource = new EventSource('/api/events');
+    
+    // Handle incoming events
+    eventSource.onmessage = (event) => {
+      const newEvent = JSON.parse(event.data);
+      setEvents(prev => [...prev, newEvent]);
+      
+      // Apply event to application state
+      applyEvent(newEvent);
+    };
+    
+    // Handle reconnection
+    eventSource.onerror = (error) => {
+      console.error('EventSource failed:', error);
+      // EventSource will automatically try to reconnect
+    };
+  });
+  
+  onCleanup(() => {
+    if (eventSource) {
+      eventSource.close();
+    }
+  });
+  
+  return (/* component rendering */);
+}
 ```
 
 #### Advantages:
 - Simpler than WebSockets
-- Standard HTTP protocol
-- Good browser support
-- Works with proxies and firewalls
+- Built-in reconnection handling
+- Works through most proxies and firewalls
+- Automatic event ID tracking for resuming
 
 #### Disadvantages:
-- One-way communication only
-- Limited to HTTP/1.1 connection limits
-- Still requires polling on the server side
+- One-way communication only (server to client)
+- Limited to HTTP/1.1 connection limits per domain
+- Slightly higher latency than WebSockets
 
 ## Recommended Approach
 
-For FlightDeck, the **SolidJS polling with signals** (Option 1) offers the best balance of simplicity and functionality. This approach:
+For FlightDeck, **Server-Sent Events (SSE)** offers the best balance of simplicity and functionality for your architecture. This approach:
 
-1. Requires no additional server infrastructure
-2. Leverages SolidJS's fine-grained reactivity system
-3. Can be implemented quickly without major architectural changes
-4. Scales naturally with the number of active users
-5. Adapts polling frequency based on activity
+1. Provides near real-time updates from server to client
+2. Has simpler server implementation than WebSockets
+3. Integrates well with SolidJS's reactive system
+4. Features built-in reconnection support for network issues
+5. Works through most proxy servers and firewalls
+
+If bidirectional communication becomes a requirement, you can implement WebSockets instead or as a complement to SSE.
 
 ### Implementation Notes
 
-1. **Efficient Polling:**
-   - Only fetch events newer than the last seen event
-   - Use exponential backoff when no new events are detected
-   - Poll immediately after user actions that create events
+1. **Connection Management:**
+   - Track active SSE connections on the server
+   - Handle client disconnections gracefully
+   - Limit the number of events sent to prevent overwhelming clients
 
-2. **Optimistic UI Updates:**
-   - Update the UI immediately in response to user actions
-   - Confirm changes when the server acknowledges the event
+2. **Integration with Event Processor:**
+   - Modify the event processor to publish events to the SSE bus
+   - Ensure events are sent to clients after they're successfully stored
 
-3. **Connection Recovery:**
-   - Implement reconnection logic for network interruptions
-   - Cache pending changes locally if disconnected
+3. **Event Filtering:**
+   - Allow clients to subscribe to specific event types or streams
+   - Filter events on the server to reduce network traffic
 
-4. **Event Batching:**
-   - Group events on the server side to reduce HTTP requests
-   - Process batches of events efficiently in the client
-
-## Future Enhancements
-
-As the system grows, you could consider:
-
-1. Transitioning to Server-Sent Events for more efficient one-way communication
-2. Implementing WebSockets for true real-time updates in heavily interactive scenarios
-3. Using a hybrid approach where critical updates use WebSockets and routine updates use polling
+4. **Error Handling:**
+   - Implement robust error handling for SSE connections
+   - Use try/catch blocks to prevent one failed connection from affecting others
 
 ## Integration with Current Architecture
 
 The proposed pub/sub mechanism integrates cleanly with the existing FlightDeck architecture:
 
 1. **Event Store remains unchanged** - SQLite continues to serve as the source of truth
-2. **Event Processor maintains ordering** - MailboxProcessor ensures events are processed in order
+2. **Event Processor notifies the SSE/WebSocket bus** - Events are broadcast after persistence
 3. **SolidJS reactivity handles UI updates** - Fine-grained reactivity efficiently updates only changed parts
-4. **Falco API serves as the interface** - Simple endpoints provide events to clients
+4. **Falco API serves SSE/WebSocket endpoints** - Simple endpoints provide event streams to clients
 
-This approach maintains the benefits of event sourcing while adding near-real-time updates with minimal changes to the existing architecture.
+This approach maintains the benefits of event sourcing while adding real-time updates, creating a responsive and reactive architecture.
