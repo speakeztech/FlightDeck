@@ -42,6 +42,9 @@ Provides practical examples of how to query complex JSON data structures from ev
 ### [11 Event Archiving Strategies.md](./11%20Event%20Archiving%20Strategies.md)
 Presents approaches for managing growing event stores through archiving mechanisms in SQLite-based event sourcing systems. This document covers different architectural options for implementing event archiving, various strategies for determining when to archive events, and the integration of snapshots as a complementary performance optimization. It includes detailed code examples for archiving implementations, along with practical recommendations tailored to FlightDeck's needs as the system scales over time.
 
+### [12 Pub-Sub Mechanism using SolidJS.md](./12%20Pub-Sub%20Mechanism%20using%20SolidJS.md)
+Details real-time communication strategies for connecting the SQLite event sourcing backend with SolidJS frontends using WebSockets and Server-Sent Events (SSE). This document compares implementation approaches for pushing events from the server to reactive client interfaces, with code examples for both server-side Falco/F# components and client-side SolidJS integration. It addresses connection management, error handling, and reconnection strategies to create a responsive event-driven user experience that maintains consistency with the underlying event store.
+
 ## Using This Documentation
 
 These documents should be read in sequence for a comprehensive understanding of the FlightDeck architecture, though each document can also stand alone for reference on specific aspects. Key diagrams are provided in Mermaid format for easier visualization of architectural concepts.
