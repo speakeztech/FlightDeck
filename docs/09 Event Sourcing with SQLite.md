@@ -9,9 +9,10 @@ This document outlines a lightweight event sourcing implementation for the Fligh
 flowchart TB
     Client[Client Application] --> API[Falco API]
     API --> CommandHandlers[Command Handlers]
-    CommandHandlers --> EventStore[Event Store]
+    CommandHandlers --> EventProcessor[Event Processor]
+    EventProcessor --> EventStore[Event Store]
     EventStore --> SQLite[(SQLite Database)]
-    EventStore --> EventBus[Event Bus]
+    EventProcessor --> EventBus[Event Bus]
     EventBus --> Projections[Projections]
     EventBus --> Subscribers[Event Subscribers]
     Projections --> ReadModels[(Read Models)]
@@ -61,6 +62,11 @@ CREATE TABLE IF NOT EXISTS events (
 
 -- Create index for efficient event retrieval
 CREATE INDEX IF NOT EXISTS idx_events_stream_id ON events(stream_id);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+
+-- Optional: JSON index for common queries
+CREATE INDEX IF NOT EXISTS idx_events_json_case ON events(json_extract(data, '$.Case'));
 
 -- Optional: Snapshots table for performance optimization
 CREATE TABLE IF NOT EXISTS snapshots (
@@ -69,6 +75,18 @@ CREATE TABLE IF NOT EXISTS snapshots (
     data TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     FOREIGN KEY (stream_id) REFERENCES streams(stream_id)
+);
+
+-- Optional: Archived events table for managing database size
+CREATE TABLE IF NOT EXISTS archived_events (
+    id TEXT PRIMARY KEY,
+    stream_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    data TEXT NOT NULL,
+    metadata TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    archived_at TEXT NOT NULL
 );
 ```
 
@@ -113,11 +131,120 @@ type SerializedEvent = {
     Metadata: string  // JSON serialized
     Timestamp: DateTimeOffset
 }
+
+// Event processing message types
+type EventProcessingMessage =
+    | AppendEvent of StreamId * Event<obj>
+    | UpdateReadModel of Event<obj>
+    | ArchiveStream of StreamId * int
+    | CreateSnapshot of StreamId
 ```
 
-## Event Store Implementation with Donald
+## Concurrency Management with MailboxProcessor
 
-Donald provides a lightweight, F# friendly way to interact with SQLite:
+To manage concurrent writes and ensure event ordering, we implement an event processor using MailboxProcessor:
+
+```fsharp
+module FlightDeck.EventSourcing.EventProcessor
+
+open System
+open System.Data.SQLite
+open FlightDeck.EventSourcing.Domain
+open FlightDeck.EventSourcing.EventStore
+
+// Create a mailbox processor for handling all event operations
+let eventProcessor = MailboxProcessor<EventProcessingMessage>.Start(fun inbox ->
+    // SQLite connection factory
+    let getConnection() =
+        let conn = new SQLiteConnection(connectionString "flightdeck.db")
+        conn.Open()
+        // Enable WAL mode for better concurrency
+        let cmd = conn.CreateCommand()
+        cmd.CommandText <- "PRAGMA journal_mode=WAL;"
+        cmd.ExecuteNonQuery() |> ignore
+        conn
+    
+    let rec loop () = async {
+        let! msg = inbox.Receive()
+        
+        try
+            match msg with
+            | AppendEvent (streamId, event) ->
+                use conn = getConnection()
+                match appendEvent conn streamId (Some event.Version) event with
+                | Ok newVersion -> 
+                    // Broadcast to read models
+                    inbox.Post(UpdateReadModel { event with Version = newVersion })
+                | Error err -> 
+                    printfn "Error appending event: %s" err
+                    
+            | UpdateReadModel event ->
+                // Update all read models with the new event
+                // This could dispatch to multiple projections
+                use conn = getConnection()
+                updateProjections conn event
+                
+            | ArchiveStream (streamId, olderThanVersion) ->
+                use conn = getConnection()
+                archiveEvents conn streamId olderThanVersion |> ignore
+                
+            | CreateSnapshot streamId ->
+                use conn = getConnection()
+                use conn = getConnection()
+                let events = getEvents<obj> conn streamId
+                createSnapshot conn streamId events |> ignore
+        with
+        | ex -> 
+            printfn "Error processing event message: %s" ex.Message
+            
+        return! loop()
+    }
+    
+    loop()
+)
+
+// API for posting events
+let appendEvent<'T> streamId (expectedVersion: int) (event: Event<'T>) =
+    let typedEvent = {
+        Id = event.Id
+        StreamId = event.StreamId
+        Version = expectedVersion
+        EventType = event.EventType
+        Data = event.Data :> obj
+        Metadata = event.Metadata
+    }
+    eventProcessor.Post(AppendEvent(streamId, typedEvent))
+
+// Schedule periodic snapshots
+let startSnapshotting() =
+    async {
+        while true do
+            do! Async.Sleep(TimeSpan.FromHours(1).TotalMilliseconds |> int)
+            
+            // Find streams that need snapshots
+            use conn = new SQLiteConnection(connectionString "flightdeck.db")
+            conn.Open()
+            
+            let sql = """
+            SELECT stream_id
+            FROM streams
+            WHERE (SELECT COUNT(*) FROM events WHERE events.stream_id = streams.stream_id) > 50
+            """
+            
+            let streamsNeedingSnapshots =
+                Db.newCommand sql
+                |> Db.noParams
+                |> Db.query conn (fun row -> row.string "stream_id")
+                |> Seq.toList
+                
+            for streamId in streamsNeedingSnapshots do
+                eventProcessor.Post(CreateSnapshot streamId)
+    } |> Async.Start
+```
+
+## Enhanced Event Store Implementation with Donald
+
+Donald provides a lightweight, F# friendly way to interact with SQLite, with additional safeguards for concurrency:
 
 ```fsharp
 module FlightDeck.EventSourcing.EventStore
@@ -169,49 +296,36 @@ let deserializeEvent<'T> (serialized: SerializedEvent) : Event<'T> =
         Metadata = JsonSerializer.Deserialize<EventMetadata>(serialized.Metadata)
     }
 
-// Core event store operations
+// Core event store operations with enhanced concurrency control
 let appendEvent<'T> (conn: SQLiteConnection) (streamId: StreamId) (expectedVersion: int option) (event: Event<'T>) =
     use transaction = conn.BeginTransaction()
     
     try
-        // Get current version if expected version is specified
+        // First acquire an exclusive lock on the stream to prevent concurrency issues
+        let lockSql = """
+        SELECT version FROM streams WHERE stream_id = @streamId
+        """
+        
+        let lockParam = [ "@streamId", SqlType.String streamId ]
+        
         let currentVersion =
-            match expectedVersion with
-            | None -> None
-            | Some _ ->
-                let versionSql = "SELECT version FROM streams WHERE stream_id = @streamId"
-                let versionParam = [ "@streamId", SqlType.String streamId ]
-                
-                Db.newCommand versionSql
-                |> Db.setParams versionParam
-                |> Db.querySingle conn
-                |> function
-                    | None -> Some 0
-                    | Some row -> Some (row.["version"] :?> int)
+            Db.newCommand lockSql
+            |> Db.setParams lockParam
+            |> Db.querySingle conn
+            |> function
+                | None -> 0  // Stream doesn't exist yet
+                | Some row -> row.int "version"
         
         // Check optimistic concurrency
-        match expectedVersion, currentVersion with
-        | Some expected, Some current when expected <> current ->
-            Error $"Concurrency conflict: expected version {expected}, but current version is {current}"
+        match expectedVersion with
+        | Some expected when expected <> currentVersion ->
+            Error $"Concurrency conflict: expected version {expected}, but current version is {currentVersion}"
         | _ ->
-            // Check if stream exists
-            let streamExists =
-                let checkSql = "SELECT 1 FROM streams WHERE stream_id = @streamId"
-                let param = [ "@streamId", SqlType.String streamId ]
-                
-                Db.newCommand checkSql
-                |> Db.setParams param
-                |> Db.querySingle conn
-                |> Option.isSome
-            
             // Calculate next version
-            let nextVersion =
-                match currentVersion with
-                | None -> 1
-                | Some ver -> ver + 1
+            let nextVersion = currentVersion + 1
             
             // Create or update stream
-            if not streamExists then
+            if currentVersion = 0 then
                 let streamSql = """
                 INSERT INTO streams (stream_id, type, version, created_at, updated_at)
                 VALUES (@streamId, @type, @version, @createdAt, @updatedAt)
@@ -275,6 +389,17 @@ let appendEvent<'T> (conn: SQLiteConnection) (streamId: StreamId) (expectedVersi
         transaction.Rollback()
         Error ex.Message
 
+// Retry logic for handling transient SQLite locking issues
+let rec appendEventWithRetry<'T> (conn: SQLiteConnection) (streamId: StreamId) (expectedVersion: int option) (event: Event<'T>) (retries: int) =
+    match appendEvent conn streamId expectedVersion event with
+    | Ok version -> Ok version
+    | Error msg when msg.Contains("database is locked") && retries > 0 ->
+        // Random backoff to reduce contention
+        let delay = Random().Next(50, 200)
+        Async.Sleep delay |> Async.RunSynchronously
+        appendEventWithRetry conn streamId expectedVersion event (retries - 1)
+    | Error msg -> Error msg
+
 // Get events for a stream
 let getEvents<'T> (conn: SQLiteConnection) (streamId: StreamId) =
     let sql = """
@@ -290,16 +415,70 @@ let getEvents<'T> (conn: SQLiteConnection) (streamId: StreamId) =
     |> Db.query conn
     |> Seq.map (fun row ->
         let serialized = {
-            Id = Guid.Parse(row.["id"] :?> string)
-            StreamId = row.["stream_id"] :?> string
-            Version = row.["version"] :?> int
-            EventType = row.["event_type"] :?> string
-            Data = row.["data"] :?> string
-            Metadata = row.["metadata"] :?> string
-            Timestamp = DateTimeOffset.Parse(row.["timestamp"] :?> string)
+            Id = Guid.Parse(row.string "id")
+            StreamId = row.string "stream_id"
+            Version = row.int "version"
+            EventType = row.string "event_type"
+            Data = row.string "data"
+            Metadata = row.string "metadata"
+            Timestamp = DateTimeOffset.Parse(row.string "timestamp")
         }
         deserializeEvent<'T> serialized)
     |> Seq.toList
+
+// Archive events to reduce main table size
+let archiveEvents (conn: SQLiteConnection) (streamId: StreamId) (olderThanVersion: int) =
+    use transaction = conn.BeginTransaction()
+    
+    try
+        // First ensure a snapshot exists
+        let snapshot = getSnapshot conn streamId
+        
+        if snapshot.IsNone || snapshot.Value.Version < olderThanVersion then
+            // Create snapshot if needed
+            let events = getEvents<obj> conn streamId
+                        |> List.filter (fun e -> e.Version <= olderThanVersion)
+            createSnapshot conn streamId events |> ignore
+        
+        // Move events to archive
+        let archiveSql = """
+        INSERT INTO archived_events (id, stream_id, version, event_type, data, metadata, timestamp, archived_at)
+        SELECT id, stream_id, version, event_type, data, metadata, timestamp, @archivedAt
+        FROM events
+        WHERE stream_id = @streamId AND version <= @version
+        """
+        
+        let archiveParams = [
+            "@streamId", SqlType.String streamId
+            "@version", SqlType.Int olderThanVersion
+            "@archivedAt", SqlType.String (DateTimeOffset.UtcNow.ToString("o"))
+        ]
+        
+        Db.newCommand archiveSql
+        |> Db.setParams archiveParams
+        |> Db.execNonQuery conn
+        |> ignore
+        
+        // Delete from main table
+        let deleteSql = """
+        DELETE FROM events
+        WHERE stream_id = @streamId AND version <= @version
+        """
+        
+        Db.newCommand deleteSql
+        |> Db.setParams [
+            "@streamId", SqlType.String streamId
+            "@version", SqlType.Int olderThanVersion
+        ]
+        |> Db.execNonQuery conn
+        |> ignore
+        
+        transaction.Commit()
+        Ok ()
+    with
+    | ex ->
+        transaction.Rollback()
+        Error ex.Message
 ```
 
 ## Domain Events
@@ -382,174 +561,36 @@ type UserLoggedIn = {
     UserId: string
     LoginTimestamp: DateTimeOffset
 }
-```
 
-## Projections
+// Event discriminated unions
+type ContentEventCase =
+    | ContentCreated of ContentCreated
+    | ContentUpdated of ContentUpdated
+    | ContentDeleted of ContentDeleted
 
-Projections transform events into optimized read models:
+type PresentationEventCase = 
+    | PresentationCreated of PresentationCreated
+    | SlideAdded of SlideAdded
+    | SlideUpdated of SlideUpdated
+    | SlideRemoved of SlideRemoved
 
-```fsharp
-module FlightDeck.Projections
-
-open System
-open System.Data.SQLite
-open FlightDeck.EventSourcing.Domain
-open FlightDeck.Domain.Events
-open Donald
-
-// Projection for Content
-let projectContent (conn: SQLiteConnection) =
-    // Create or ensure content table exists
-    let createTableSql = """
-    CREATE TABLE IF NOT EXISTS content (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        slug TEXT UNIQUE,
-        description TEXT,
-        content TEXT NOT NULL,
-        format TEXT NOT NULL,
-        status TEXT NOT NULL,
-        author TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        tags TEXT
-    );
-    """
-    
-    Db.newCommand createTableSql
-    |> Db.noParams
-    |> Db.execNonQuery conn
-    |> ignore
-    
-    // Process content events
-    let handleContentCreated (evt: ContentCreated) (metadata: EventMetadata) =
-        let sql = """
-        INSERT INTO content (id, title, slug, description, content, format, status, author, created_at, updated_at, tags)
-        VALUES (@id, @title, @slug, @description, @content, @format, @status, @author, @createdAt, @updatedAt, @tags)
-        """
-        let parameters = [
-            "@id", SqlType.String evt.ContentId
-            "@title", SqlType.String evt.Title
-            "@slug", match evt.Slug with Some s -> SqlType.String s | None -> SqlType.Null
-            "@description", match evt.Description with Some d -> SqlType.String d | None -> SqlType.Null
-            "@content", SqlType.String evt.Content
-            "@format", SqlType.String evt.Format
-            "@status", SqlType.String "Draft"
-            "@author", SqlType.String evt.Author
-            "@createdAt", SqlType.String (metadata.Timestamp.ToString("o"))
-            "@updatedAt", SqlType.String (metadata.Timestamp.ToString("o"))
-            "@tags", SqlType.String (String.Join(",", evt.Tags))
-        ]
-        
-        Db.newCommand sql
-        |> Db.setParams parameters
-        |> Db.execNonQuery conn
-        |> ignore
-    
-    let handleContentUpdated (evt: ContentUpdated) (metadata: EventMetadata) =
-        // Build dynamic SQL and parameters based on what fields were updated
-        let mutable setClauses = []
-        let mutable parameters = [ "@id", SqlType.String evt.ContentId ]
-        
-        match evt.Title with
-        | Some title -> 
-            setClauses <- "title = @title" :: setClauses
-            parameters <- ("@title", SqlType.String title) :: parameters
-        | None -> ()
-        
-        match evt.Slug with
-        | Some slug -> 
-            setClauses <- "slug = @slug" :: setClauses
-            parameters <- ("@slug", SqlType.String slug) :: parameters
-        | None -> ()
-        
-        match evt.Description with
-        | Some desc -> 
-            setClauses <- "description = @description" :: setClauses
-            parameters <- ("@description", SqlType.String desc) :: parameters
-        | None -> ()
-        
-        match evt.Content with
-        | Some content -> 
-            setClauses <- "content = @content" :: setClauses
-            parameters <- ("@content", SqlType.String content) :: parameters
-        | None -> ()
-        
-        match evt.Format with
-        | Some format -> 
-            setClauses <- "format = @format" :: setClauses
-            parameters <- ("@format", SqlType.String format) :: parameters
-        | None -> ()
-        
-        match evt.Status with
-        | Some status -> 
-            setClauses <- "status = @status" :: setClauses
-            parameters <- ("@status", SqlType.String status) :: parameters
-        | None -> ()
-        
-        match evt.Tags with
-        | Some tags -> 
-            setClauses <- "tags = @tags" :: setClauses
-            parameters <- ("@tags", SqlType.String (String.Join(",", tags))) :: parameters
-        | None -> ()
-        
-        // Always update the updated_at timestamp
-        setClauses <- "updated_at = @updatedAt" :: setClauses
-        parameters <- ("@updatedAt", SqlType.String (metadata.Timestamp.ToString("o"))) :: parameters
-        
-        let setClauses = String.Join(", ", setClauses)
-        let sql = $"UPDATE content SET {setClauses} WHERE id = @id"
-        
-        Db.newCommand sql
-        |> Db.setParams parameters
-        |> Db.execNonQuery conn
-        |> ignore
-    
-    let handleContentDeleted (evt: ContentDeleted) =
-        let sql = "DELETE FROM content WHERE id = @id"
-        let parameters = [ "@id", SqlType.String evt.ContentId ]
-        
-        Db.newCommand sql
-        |> Db.setParams parameters
-        |> Db.execNonQuery conn
-        |> ignore
-    
-    // Handler for different event types
-    let handleEvent (event: Event<obj>) =
-        match event.EventType with
-        | "ContentCreated" ->
-            let typedData = event.Data :?> ContentCreated
-            handleContentCreated typedData event.Metadata
-        | "ContentUpdated" ->
-            let typedData = event.Data :?> ContentUpdated
-            handleContentUpdated typedData event.Metadata
-        | "ContentDeleted" ->
-            let typedData = event.Data :?> ContentDeleted
-            handleContentDeleted typedData
-        | _ -> () // Ignore other event types
-    
-    handleEvent
+type UserEventCase =
+    | UserRegistered of UserRegistered
+    | UserLoggedIn of UserLoggedIn
 ```
 
 ## Integration with Falco
 
-Integrating the event sourcing system with Falco:
+Integrating the event sourcing system with Falco using the event processor:
 
 ```fsharp
 module FlightDeck.Web.Handlers
 
 open System
-open System.Data.SQLite
 open Falco
 open FlightDeck.EventSourcing.Domain
-open FlightDeck.EventSourcing.EventStore
+open FlightDeck.EventSourcing.EventProcessor
 open FlightDeck.Domain.Events
-
-// Connection factory
-let getConnection() =
-    let conn = new SQLiteConnection(connectionString "flightdeck.db")
-    conn.Open()
-    conn
 
 // Command handler for creating content
 let createContent : HttpHandler =
@@ -558,7 +599,7 @@ let createContent : HttpHandler =
         let userId = ctx.User.FindFirst("sub")?.Value
         
         // Create the domain event
-        let contentCreated = {
+        let contentCreated = ContentCreated {
             ContentId = contentId
             Title = request.Title
             Slug = request.Slug
@@ -586,86 +627,173 @@ let createContent : HttpHandler =
             Metadata = metadata
         }
         
-        // Save the event
-        use conn = getConnection()
-        let result = appendEvent conn contentId None event
+        // Post to the event processor
+        appendEvent contentId 0 event
         
-        match result with
-        | Ok version ->
-            // Return success response with the new content ID
-            Response.ofJson {| success = true; contentId = contentId |} ctx
-        | Error errorMsg ->
-            // Return error response
-            Response.withStatusCode 500
-            >> Response.ofJson {| success = false; error = errorMsg |}
-            |> fun handler -> handler ctx
+        // Return success response with the new content ID
+        Response.ofJson {| success = true; contentId = contentId |} ctx
     )
 
-// Query handler for getting content
+// Query handler for getting content using read models
 let getContent : HttpHandler =
     Request.mapRoute (fun route -> 
         let contentId = route.GetString "id" ""
         contentId)
         (fun contentId ctx ->
-            use conn = getConnection()
+            // Query the read model directly instead of replaying events
+            use conn = ReadModels.getConnection()
+            let content = ReadModels.getContentById conn contentId
             
-            // Get all events for the content
-            let events = getEvents<obj> conn contentId
-            
-            if List.isEmpty events then
+            match content with
+            | Some c ->
+                // Return the content
+                Response.ofJson c ctx
+            | None ->
                 // Content not found
                 Response.withStatusCode 404
                 >> Response.ofJson {| success = false; error = "Content not found" |}
                 |> fun handler -> handler ctx
-            else
-                // Project the current state from events
-                let mutable content = None
-                
-                for event in events do
-                    match event.EventType with
-                    | "ContentCreated" ->
-                        let e = event.Data :?> ContentCreated
-                        content <- Some {|
-                            id = e.ContentId
-                            title = e.Title
-                            slug = e.Slug
-                            description = e.Description
-                            content = e.Content
-                            format = e.Format
-                            status = "Draft"
-                            author = e.Author
-                            createdAt = event.Metadata.Timestamp
-                            updatedAt = event.Metadata.Timestamp
-                            tags = e.Tags
-                        |}
-                    | "ContentUpdated" ->
-                        let e = event.Data :?> ContentUpdated
-                        content <- content |> Option.map (fun c ->
-                            {| c with
-                                title = e.Title |> Option.defaultValue c.title
-                                slug = e.Slug |> Option.orElse c.slug
-                                description = e.Description |> Option.orElse c.description
-                                content = e.Content |> Option.defaultValue c.content
-                                format = e.Format |> Option.defaultValue c.format
-                                status = e.Status |> Option.defaultValue c.status
-                                updatedAt = event.Metadata.Timestamp
-                                tags = e.Tags |> Option.defaultValue c.tags
-                            |}
-                        )
-                    | "ContentDeleted" ->
-                        content <- None
-                    | _ -> ()
-                
-                match content with
-                | Some c ->
-                    // Return the content
-                    Response.ofJson c ctx
-                | None ->
-                    // Content was deleted
-                    Response.withStatusCode 404
-                    >> Response.ofJson {| success = false; error = "Content not found or deleted" |}
-                    |> fun handler -> handler ctx
         )
+```
+
+## Snapshots and Read Models
+
+Snapshots provide performance optimization for aggregate rebuilding:
+
+```fsharp
+module FlightDeck.EventSourcing.Snapshots
+
+open System
+open System.Data.SQLite
+open Donald
+open System.Text.Json
+open FlightDeck.EventSourcing.Domain
+
+// Create a snapshot of a stream's current state
+let createSnapshot<'T> (conn: SQLiteConnection) (streamId: string) (events: Event<'T> list) =
+    if List.isEmpty events then
+        Ok ()
+    else
+        try
+            // Get the latest version and timestamp
+            let latestEvent = events |> List.maxBy (fun e -> e.Version)
+            let latestVersion = latestEvent.Version
+            let latestTimestamp = latestEvent.Metadata.Timestamp
+            
+            // Serialize the entire list of events
+            // This is a simplistic approach - in a real system, you'd serialize the aggregate state
+            let serializedEvents = JsonSerializer.Serialize(events)
+            
+            // Store the snapshot
+            let sql = """
+            INSERT OR REPLACE INTO snapshots (stream_id, version, data, timestamp)
+            VALUES (@streamId, @version, @data, @timestamp)
+            """
+            
+            let parameters = [
+                "@streamId", SqlType.String streamId
+                "@version", SqlType.Int latestVersion
+                "@data", SqlType.String serializedEvents
+                "@timestamp", SqlType.String (latestTimestamp.ToString("o"))
+            ]
+            
+            Db.newCommand sql
+            |> Db.setParams parameters
+            |> Db.execNonQuery conn
+            |> ignore
+            
+            Ok ()
+        with
+        | ex -> Error ex.Message
+
+// Get a snapshot for a stream
+let getSnapshot<'T> (conn: SQLiteConnection) (streamId: string) =
+    let sql = """
+    SELECT version, data, timestamp
+    FROM snapshots
+    WHERE stream_id = @streamId
+    """
+    
+    let parameters = [
+        "@streamId", SqlType.String streamId
+    ]
+    
+    Db.newCommand sql
+    |> Db.setParams parameters
+    |> Db.querySingle conn
+    |> Option.map (fun row ->
+        {|
+            Version = row.int "version"
+            Events = JsonSerializer.Deserialize<Event<'T> list>(row.string "data")
+            Timestamp = DateTimeOffset.Parse(row.string "timestamp")
+        |}
+    )
+
+// Get the current state using snapshot if available
+let getCurrentState<'T, 'State> 
+    (conn: SQLiteConnection) 
+    (streamId: string) 
+    (initialState: 'State) 
+    (applyEvent: 'State -> Event<'T> -> 'State) =
+    
+    // Try to get snapshot
+    let snapshot = getSnapshot<'T> conn streamId
+    
+    match snapshot with
+    | Some snapshot ->
+        // Start with state from snapshot
+        let stateFromSnapshot = 
+            snapshot.Events |> List.fold applyEvent initialState
+        
+        // Get only events after the snapshot version
+        let sql = """
+        SELECT id, stream_id, version, event_type, data, metadata, timestamp
+        FROM events
+        WHERE stream_id = @streamId AND version > @version
+        ORDER BY version ASC
+        """
+        
+        let parameters = [
+            "@streamId", SqlType.String streamId
+            "@version", SqlType.Int snapshot.Version
+        ]
+        
+        let newerEvents = 
+            Db.newCommand sql
+            |> Db.setParams parameters
+            |> Db.query conn
+            |> Seq.map (fun row ->
+                let serialized = {
+                    Id = Guid.Parse(row.string "id")
+                    StreamId = row.string "stream_id"
+                    Version = row.int "version"
+                    EventType = row.string "event_type"
+                    Data = row.string "data"
+                    Metadata = row.string "metadata"
+                    Timestamp = DateTimeOffset.Parse(row.string "timestamp")
+                }
+                deserializeEvent<'T> serialized)
+            |> Seq.toList
+        
+        // Apply newer events to snapshot state
+        let finalState = newerEvents |> List.fold applyEvent stateFromSnapshot
+        let latestVersion = 
+            if List.isEmpty newerEvents then snapshot.Version
+            else newerEvents |> List.maxBy (fun e -> e.Version) |> fun e -> e.Version
+            
+        Ok (finalState, latestVersion)
+        
+    | None ->
+        // No snapshot, get all events
+        let events = getEvents<'T> conn streamId
+        
+        if List.isEmpty events then
+            // Stream doesn't exist or has no events
+            Error "Stream not found or has no events"
+        else
+            let state = events |> List.fold applyEvent initialState
+            let latestVersion = events |> List.maxBy (fun e -> e.Version) |> fun e -> e.Version
+            Ok (state, latestVersion)
 ```
 
 ## Event Workflow Example
@@ -676,6 +804,7 @@ sequenceDiagram
     participant Client
     participant API as Falco API
     participant CommandHandler as Command Handler
+    participant EventProcessor as Event Processor
     participant EventStore as Event Store
     participant SQLite as SQLite Database
     participant Projections as Projections
@@ -683,16 +812,20 @@ sequenceDiagram
 
     Client->>API: POST /api/content (Create Content)
     API->>CommandHandler: CreateContentRequest
-    CommandHandler->>EventStore: ContentCreated Event
-    EventStore->>SQLite: Append Event
+    CommandHandler->>EventProcessor: Post ContentCreated Event
+    EventProcessor->>EventStore: Append Event
+    EventStore->>SQLite: Begin Transaction
+    SQLite-->>EventStore: Acquire Lock
+    EventStore->>SQLite: Insert Event
+    EventStore->>SQLite: Update Stream Version
     SQLite-->>EventStore: Success
-    EventStore-->>CommandHandler: Event Stored (Version)
-    CommandHandler-->>API: Success Response
-    API-->>Client: 201 Created (ContentId)
-
-    EventStore->>Projections: Notify (ContentCreated)
+    EventStore->>SQLite: Commit Transaction
+    EventProcessor->>Projections: Notify (ContentCreated)
     Projections->>ReadModel: Update Content Model
     ReadModel-->>Projections: Success
+    EventProcessor-->>CommandHandler: Event Processing Complete
+    CommandHandler-->>API: Success Response
+    API-->>Client: 201 Created (ContentId)
     
     Note over Client,ReadModel: Later...
     
@@ -709,20 +842,53 @@ sequenceDiagram
 | Setup Complexity | Low - embedded database | Medium - separate database service |
 | Deployment | Simple - single file | More complex - database infrastructure |
 | Scalability | Limited - better for smaller workloads | High - better for large workloads |
-| JSON Support | Basic | Advanced (JSONB) |
-| Query Capabilities | Limited | Extensive |
-| Transactions | Basic | Advanced |
-| Concurrency | Limited | High |
+| JSON Support | Basic but adequate | Advanced (JSONB) |
+| Query Capabilities | Good with JSON functions | Extensive with more options |
+| Transactions | ACID compliant | ACID with more isolation levels |
+| Concurrency | File-level locking, WAL mode helps | MVCC with better concurrency |
 | F# Integration | Via Donald (lightweight) | Via Marten.FSharp |
-| Use Case | Small to medium applications, single-user scenarios | Larger applications, multi-user scenarios |
+| Use Case | Small to medium applications, single-server deployments | Larger applications, distributed systems |
+| Code Generation | None - simpler model | Can require complex type mapping |
+| Tooling | Minimal but sufficient | Rich ecosystem |
+| Read Models | Manual implementation | Built-in projections |
+
+## Concurrency Management
+
+SQLite's concurrency model differs from PostgreSQL's, requiring specific design considerations:
+
+1. **Use MailboxProcessor as a serialization point**: This ensures events are processed in order and avoids SQLite's file-level locking issues.
+
+2. **Enable Write-Ahead Logging (WAL) mode**: Improves concurrency by allowing multiple readers while a writer is active.
+
+3. **Implement optimistic concurrency control**: Check versions before committing changes to prevent lost updates.
+
+4. **Add retry logic for lock contention**: When multiple processes try to write simultaneously, some transactions may fail with "database is locked" errors.
+
+5. **Consider separate read/write connections**: Keep write operations serialized but allow parallel reads.
+
+## Production Considerations
+
+For production use of SQLite-based event sourcing:
+
+1. **Regular backups**: While SQLite is reliable, regular backups are essential.
+
+2. **Monitor database size**: Implement archiving strategies to prevent the database from growing too large.
+
+3. **Consider read replicas**: For read-heavy workloads, create read-only copies of the database.
+
+4. **Implement connection pooling**: Manage connections efficiently, especially for web applications.
+
+5. **Add proper logging**: Track operations and potential errors during event processing.
+
+6. **Consider SQLite extensions**: Various extensions can enhance SQLite's capabilities for specific needs.
 
 ## Conclusion
 
 This SQLite-based event sourcing implementation provides a lightweight alternative to Marten while maintaining the core benefits of the event sourcing pattern. It's particularly well-suited for:
 
-1. Single-user or small team deployments of FlightDeck
+1. Single-server deployments of FlightDeck
 2. Scenarios where simplified deployment is important
-3. Applications where the database load is moderate
+3. Applications with moderate database loads
 4. Development and testing environments
 
-The approach uses F#'s strong type system to provide compile-time safety while keeping the implementation straightforward and maintainable.
+The approach uses F#'s strong type system and SQLite's reliability to create a robust event sourcing system, with MailboxProcessor providing the concurrency control needed for consistent event processing. Although simpler than PostgreSQL-based solutions, it maintains the core benefits of event sourcing while being more accessible and easier to deploy.
