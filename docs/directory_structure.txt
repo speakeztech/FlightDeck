@@ -3,7 +3,7 @@
 
 Mode            Length Hierarchy
 ----            ------ ---------
-d----        271.31 KB docs
+d----        296.90 KB docs
 -a---          4.28 KB ├── 00 Falco-based Architecture.md
 -a---         21.08 KB ├── 01 Core Architecture.md
 -a---         22.46 KB ├── 02 Shared Domain Model.md
@@ -13,6 +13,7 @@ d----        271.31 KB docs
 -a---         24.49 KB ├── 06 MVU-SolidJS Architecture.md
 -a---         20.67 KB ├── 07 Custom Shape Masks.md
 -a---         37.00 KB ├── 08 Complex Layouts in FsReveal.md
+-a---         24.58 KB ├── 09 Event Sourcing with SQLite.md
 -a---          0.00  B ├── directory_structure.txt
--a---          3.71 KB └── README.md
+-a---          4.72 KB └── README.md
 

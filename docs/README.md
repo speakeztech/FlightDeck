@@ -27,11 +27,14 @@ Outlines the build pipeline, deployment options, continuous integration, and mon
 ### [06 MVU-SolidJS Architecture.md](./06%20MVU-SolidJS%20Architecture.md)
 Describes the implementation of the Model-View-Update (MVU) architectural pattern using SolidJS in a Falco-based web application. This document explains how to combine server-rendered pages with client-side interactivity while maintaining state across page transitions.
 
-### [07 Implementing Custom Shape Masks in FsReveal.md](./07%20Implementing%20Custom%20Shape%20Masks%20in%20FsReveal.md)
+### [07 Custom Shape Masks.md](./07%20Custom%20Shape%20Masks.md)
 Provides a comprehensive approach to implementing geometric shape masks for images in FsReveal presentations. This document details how to create circles, rhombuses, hexagons, and custom shapes using a type-safe F# DSL that generates SVG clip paths. It covers the domain model, rendering implementation, and practical usage patterns for creating visually engaging slides with masked images while maintaining F#'s type safety and functional programming benefits.
 
 ### [08 Complex Layouts in FsReveal.md](./08%20Complex%20Layouts%20in%20FsReveal.md)
 Extends the presentation capabilities with advanced layout techniques, allowing precise positioning of content elements and complex background "landscaping" using SVG layers. This document details positioning systems, background layering, and how to combine these with shape-masked images to create professional slide designs. It includes practical examples and a fluent F# DSL for creating sophisticated visual compositions while maintaining code-first development approaches.
+
+### [09 Event Sourcing with SQLite.md](./09%20Event%20Sourcing%20with%20SQLite.md)
+Explores the implementation of event sourcing patterns using SQLite as the underlying storage mechanism. This document details how to design and implement an event-driven architecture that leverages SQLite's reliability and performance characteristics while maintaining the benefits of event sourcing such as complete audit trails, temporal queries, and system state reconstruction.
 
 ## Using This Documentation
 
