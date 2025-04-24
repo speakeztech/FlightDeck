@@ -36,6 +36,9 @@ Extends the presentation capabilities with advanced layout techniques, allowing 
 ### [09 Event Sourcing with SQLite.md](./09%20Event%20Sourcing%20with%20SQLite.md)
 Explores the implementation of event sourcing patterns using SQLite as the underlying storage mechanism. This document details how to design and implement an event-driven architecture that leverages SQLite's reliability and performance characteristics while maintaining the benefits of event sourcing such as complete audit trails, temporal queries, and system state reconstruction.
 
+### [10 SQLite JSON Queries with Donald.md](./10%20SQLite%20JSON%20Queries%20with%20Donald.md)
+Provides practical examples of how to query complex JSON data structures from event sourcing systems using SQLite's JSON functions with the Donald F# library. This document explains the differences between PostgreSQL's jsonb operations and SQLite's JSON functions, offering detailed code examples for common event sourcing query patterns including temporal queries, state reconstruction, and analytical queries across event streams.
+
 ## Using This Documentation
 
 These documents should be read in sequence for a comprehensive understanding of the FlightDeck architecture, though each document can also stand alone for reference on specific aspects. Key diagrams are provided in Mermaid format for easier visualization of architectural concepts.
