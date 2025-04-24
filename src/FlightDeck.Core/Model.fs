@@ -1315,10 +1315,10 @@ type SiteContents () =
         result :?> IEnumerable<'a>
 
     member this.TryGetValues<'a> () =
-        let key = typeof<List<'a>>
-        if container.GetService(key) |> isNull then
-            None
-        else this.GetValues<'a>() |> Some
+            let key = typeof<List<'a>>
+            if container.GetService(key) |> isNull then
+                None
+            else this.GetValues<'a>() |> Some
 
     member this.TryGetValue<'a> () =
         this.TryGetValues<'a> ()

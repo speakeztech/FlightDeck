@@ -141,169 +141,47 @@ let copyDirectories (input : string) (output : string) =
     |> Seq.iter (fun p -> File.Copy(p, p.Replace(input, output)))
 
 // Initialize npm project with Tailwind/DaisyUI if requested
-let initializeModernFeatures (outputDirectory: string) (lightTheme: string) (darkTheme: string)  =
-    // Create directories
-    let styleDir = Path.Combine(outputDirectory, "style")
-    if not (Directory.Exists(styleDir)) then
-        Directory.CreateDirectory(styleDir) |> ignore
-        
+let initializeThemeFeatures (outputDirectory: string) (lightTheme: string option) (darkTheme: string option) =
     let loadersDir = Path.Combine(outputDirectory, "loaders")
     if Directory.Exists(loadersDir) then
         let globalLoaderPath = Path.Combine(loadersDir, "globalloader.fsx")
         if File.Exists(globalLoaderPath) then
             let content = File.ReadAllText(globalLoaderPath)
-            let updatedContent = 
-                if content.Contains("type SiteInfo =") then
+            let updatedContent =
+                match lightTheme, darkTheme with
+                | Some lt, Some dt ->
                     content.Replace(
-                        "type SiteInfo =",
-                        """type SiteInfo = {
-                        title: string
-                        description: string
-                        postPageSize: int
-                        lightTheme: string
-                        darkTheme: string
-                    }""")
-                else
-                    content
-                    
-            let updatedContent2 = 
-                if updatedContent.Contains("let siteInfo =") then
-                    updatedContent.Replace(
                         "let siteInfo =",
                         $"""let siteInfo =
-        {{ title = "FlightDeck Site";
-          description = "A modern static site built with FlightDeck"
-          postPageSize = 5
-          lightTheme = "%s{lightTheme}"
-          darkTheme = "%s{darkTheme}" }}""")
-                else
-                    updatedContent
-                    
-            File.WriteAllText(globalLoaderPath, updatedContent2)    
-    // Create package.json
-    let packageJsonPath = Path.Combine(outputDirectory, "package.json")
-    let packageJsonContent = 
-        """{
-  "name": "flightdeck-site",
-  "version": "1.0.0",
-  "description": "Modern static site built with FlightDeck",
-  "private": true,
-  "scripts": {
-    "build:css": "postcss style/style.css -o _public/style/style.css",
-    "watch:css": "postcss style/style.css -o _public/style/style.css --watch"
-  },
-  "devDependencies": {
-    "@tailwindcss/typography": "^0.5.10",
-    "autoprefixer": "^10.4.14",
-    "postcss": "^8.4.23",
-    "postcss-cli": "^10.1.0",
-    "tailwindcss": "^3.3.2"
-  },
-  "dependencies": {
-    "daisyui": "^3.5.0"
-  }
-}"""
-    File.WriteAllText(packageJsonPath, packageJsonContent)
-    
-    // Create postcss.config.js
-    let postcssConfigPath = Path.Combine(outputDirectory, "postcss.config.js")
-    let postcssConfigContent = 
-        """module.exports = {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}"""
-    File.WriteAllText(postcssConfigPath, postcssConfigContent)
-    
-    // Create tailwind.config.js
-    let tailwindConfigPath = Path.Combine(outputDirectory, "tailwind.config.js")
-    let tailwindConfigContent = 
-        """/** @type {import('tailwindcss').Config} */
-module.exports = {
-  content: [
-    "./_public/**/*.html",
-    "./style/**/*.css",
-  ],
-  theme: {
-    extend: {}
-  },
-  plugins: [
-    require("daisyui"),
-    require("@tailwindcss/typography"),
-  ],
-  daisyui: {
-    themes: true,
-    themeRoot: ":root",
-  },
-}"""
-    File.WriteAllText(tailwindConfigPath, tailwindConfigContent)
-    
-    // Create base CSS with Tailwind
-    let styleCssPath = Path.Combine(styleDir, "style.css")
-    let styleCssContent = 
-        """@tailwind base;
-@tailwind components;
-@tailwind utilities;
+    {{ title = "FlightDeck Site";
+      description = "A modern static site built with FlightDeck"
+      postPageSize = 5
+      lightTheme = "%s{lt}"
+      darkTheme = "%s{dt}" }}""")
+                | Some lt, None ->
+                    content.Replace(
+                        "let siteInfo =",
+                        $"""let siteInfo =
+    {{ title = "FlightDeck Site";
+      description = "A modern static site built with FlightDeck"
+      postPageSize = 5
+      lightTheme = "%s{lt}"
+      darkTheme = siteInfo.darkTheme }}""")
+                | None, Some dt ->
+                    content.Replace(
+                        "let siteInfo =",
+                        $"""let siteInfo =
+    {{ title = "FlightDeck Site";
+      description = "A modern static site built with FlightDeck"
+      postPageSize = 5
+      lightTheme = siteInfo.lightTheme
+      darkTheme = "%s{dt}" }}""")
+                | None, None -> content
 
-:root {
-  --transition-duration: 0.4s;
-}
+            File.WriteAllText(globalLoaderPath, updatedContent)
 
-html {
-  transition: background-color var(--transition-duration) ease-in-out;
-}"""
-    File.WriteAllText(styleCssPath, styleCssContent)
-    
-    // Create tailwind.fsx generator
-    let generatorsDir = Path.Combine(outputDirectory, "generators")
-    if Directory.Exists(generatorsDir) then
-        let tailwindFsxPath = Path.Combine(generatorsDir, "tailwind.fsx")
-        let tailwindFsxContent = 
-            """#r "nuget: FlightDeck.Core, 0.20.0"
-
-open System
-open System.IO
-open System.Diagnostics
-
-let generate (ctx : SiteContents) (projectRoot: string) (page: string) =
-    let outputPath = Path.Combine(projectRoot, "_public", Path.GetDirectoryName(page), Path.GetFileName(page))
-    Directory.CreateDirectory(Path.GetDirectoryName(outputPath)) |> ignore
-    
-    try
-        let psi = new ProcessStartInfo()
-        if Environment.OSVersion.Platform = PlatformID.Win32NT then
-            psi.FileName <- "cmd"
-            psi.Arguments <- sprintf "/c npx postcss %s -o %s" page outputPath
-        else
-            psi.FileName <- "npx"
-            psi.Arguments <- sprintf "postcss %s -o %s" page outputPath
-            
-        psi.WorkingDirectory <- projectRoot
-        psi.UseShellExecute <- false
-        psi.RedirectStandardOutput <- true
-        psi.RedirectStandardError <- true
-        
-        use proc = Process.Start(psi)
-        
-        let output = proc.StandardOutput.ReadToEnd()
-        let error = proc.StandardError.ReadToEnd()
-        proc.WaitForExit()
-        
-        if proc.ExitCode <> 0 then
-            printfn "PostCSS failed: %s" error
-            File.ReadAllBytes page // Fallback
-        else
-            if File.Exists(outputPath) then
-                File.ReadAllBytes outputPath
-            else
-                File.ReadAllBytes page // Fallback
-    with e ->
-        printfn "Error: %s" e.Message
-        File.ReadAllBytes page // Fallback"""
-        File.WriteAllText(tailwindFsxPath, tailwindFsxContent)
 // Template handling
-let handleTemplate (template: option<string>) (outputDirectory: string) (lightTheme: string) (darkTheme: string): unit = 
+let handleTemplate (template: option<string>) (outputDirectory: string) (lightTheme: option<string>) (darkTheme: option<string>): unit = 
     // Clone or copy template
     match template with
     | Some template ->
@@ -324,7 +202,7 @@ let handleTemplate (template: option<string>) (outputDirectory: string) (lightTh
         copyDirectories path outputDirectory
     
     // Setup Tailwind/DaisyUI and update theme settings
-    initializeModernFeatures outputDirectory lightTheme darkTheme
+    initializeThemeFeatures outputDirectory lightTheme darkTheme
     okfn $"Site created with light theme: %s{lightTheme}, dark theme: %s{darkTheme}"
 
     // Install npm dependencies

@@ -33,7 +33,7 @@ module EvaluatorHelpers =
                 yield! refs
                 yield "--noframework"
                 if isWatch then  yield "--define:WATCH"
-                yield "--define:FlightDeck"
+                yield "--define:FLIGHTDECK"
                 yield "/temp/fsi.exe"; |]
             FsiEvaluationSession.Create(fsiConfig, argv, inStream, outStream, errStream)
         with
