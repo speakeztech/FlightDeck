@@ -22,7 +22,7 @@ flowchart TB
     
     subgraph BuildProcess["Build Process"]
         direction TB
-        ServerBuild["Server Build<br>Falco Application"]
+        ServerBuild["Server Build<br>Oxpecker Application"]
         ClientBuild["Client Build<br>Fable Compilation"]
         AssetBuild["Static Assets<br>CSS, Images, etc."]
         
@@ -103,7 +103,7 @@ FlightDeck/
 ├── src/
 │   ├── FlightDeck.Client/  # Client-side code (Oxpecker.Solid)
 │   ├── FlightDeck.Core/    # Core business logic
-│   ├── FlightDeck.Server/  # Falco web server
+│   ├── FlightDeck.Server/  # Oxpecker web server
 │   └── FlightDeck.Shared/  # Shared domain model
 ├── tests/
 │   ├── FlightDeck.Client.Tests/
@@ -530,12 +530,13 @@ jobs:
            .AddResponseCaching()
            .AddMemoryCache()
            // Other services...
-           .AddFalco() |> ignore
+           .AddRouting() 
+           |> ignore
    
-   let configureApp (endpoints: HttpEndpoint list) (app: IApplicationBuilder) =
+   let configureApp (app: IApplicationBuilder) =
        app.UseResponseCaching()
           // Other middleware...
-          .UseFalco(endpoints)
+          .UseOxpecker(endpoints)
           |> ignore
    ```
 
@@ -544,9 +545,10 @@ jobs:
    ```fsharp
    // FlightDeck.Server/Handlers/ContentHandlers.fs
    let withCaching (duration: int) (handler: HttpHandler) : HttpHandler =
-       fun ctx ->
+       fun ctx -> task {
            ctx.Response.Headers.Add("Cache-Control", $"public, max-age={duration}")
-           handler ctx
+           return! handler ctx
+       }
    
    // Use in handlers
    let contentHandler : HttpHandler =
@@ -605,7 +607,8 @@ let configureServices (services: IServiceCollection) =
     services
         .AddSingleton<ICdnUrlProvider>(CdnUrlProvider(cdnUrl))
         // Other services...
-        .AddFalco() |> ignore
+        .AddRouting() 
+        |> ignore
 
 // In views
 let renderWithCdn (cdn: ICdnUrlProvider) (path: string) =
@@ -623,8 +626,8 @@ Environment-specific configuration is managed through the standard .NET configur
 
 ```fsharp
 // FlightDeck.Server/Program.fs
-let createHostBuilder args =
-    Host.CreateDefaultBuilder(args)
+let configureApp (webHostBuilder: IWebHostBuilder) =
+    webHostBuilder
         .ConfigureAppConfiguration(fun context config ->
             let env = context.HostingEnvironment
             
@@ -637,9 +640,7 @@ let createHostBuilder args =
             if env.IsDevelopment() then
                 config.AddUserSecrets<Program>() |> ignore
         )
-        .ConfigureWebHostDefaults(fun webBuilder ->
-            webBuilder.UseStartup<Startup>() |> ignore
-        )
+        |> ignore
 ```
 
 ### Configuration Schema
@@ -710,7 +711,8 @@ let configureServices (services: IServiceCollection) =
                    |> ignore
         )
         // Other services...
-        .AddFalco() |> ignore
+        .AddRouting()
+        |> ignore
 ```
 
 ### Application Insights Integration
@@ -725,7 +727,8 @@ let configureServices (services: IServiceCollection) =
             options.ConnectionString <- Configuration.GetConnectionString("ApplicationInsights")
         )
         // Other services...
-        .AddFalco() |> ignore
+        .AddRouting()
+        |> ignore
 ```
 
 ### Health Checks
@@ -743,10 +746,13 @@ let configureServices (services: IServiceCollection) =
         
     // Other services...
 
-let configureApp (endpoints: HttpEndpoint list) (app: IApplicationBuilder) =
-    app.UseHealthChecks("/health")
+let configureApp (app: IApplicationBuilder) =
+    app.UseRouting()
+       .UseEndpoints(fun endpoints -> 
+           endpoints.MapHealthChecks("/health") |> ignore
+       )
        // Other middleware...
-       .UseFalco(endpoints)
+       .UseOxpecker(endpoints)
        |> ignore
 ```
 
@@ -760,7 +766,7 @@ Implement regular backups of content data:
 // FlightDeck.Core/Backup/BackupService.fs
 type BackupService(options: BackupOptions, storage: IStorageProvider) =
     
-    member _.CreateBackup() =
+    member _.CreateBackup() = task {
         let timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss")
         let backupPath = Path.Combine(options.BackupDirectory, $"backup_{timestamp}.zip")
         
@@ -769,21 +775,26 @@ type BackupService(options: BackupOptions, storage: IStorageProvider) =
             Directory.CreateDirectory(options.BackupDirectory) |> ignore
             
         // Create backup
-        storage.CreateBackup(backupPath)
+        return! storage.CreateBackup(backupPath)
         
         // Clean up old backups
-        BackupService.CleanupOldBackups(options.BackupDirectory, options.BackupRetentionDays)
+        do! BackupService.CleanupOldBackups(options.BackupDirectory, options.BackupRetentionDays)
         
-        backupPath
+        return backupPath
+    }
         
-    static member CleanupOldBackups(backupDirectory: string, retentionDays: int) =
+    static member CleanupOldBackups(backupDirectory: string, retentionDays: int) = task {
         let cutoffDate = DateTime.UtcNow.AddDays(-retentionDays)
         
-        Directory.GetFiles(backupDirectory, "backup_*.zip")
-        |> Array.filter (fun file ->
-            let fileInfo = FileInfo(file)
-            fileInfo.CreationTimeUtc < cutoffDate)
-        |> Array.iter File.Delete
+        let files = 
+            Directory.GetFiles(backupDirectory, "backup_*.zip")
+            |> Array.filter (fun file ->
+                let fileInfo = FileInfo(file)
+                fileInfo.CreationTimeUtc < cutoffDate)
+        
+        for file in files do
+            File.Delete(file)
+    }
 ```
 
 ### Backup Scheduling
@@ -791,34 +802,22 @@ type BackupService(options: BackupOptions, storage: IStorageProvider) =
 Add a scheduled task for regular backups:
 
 ```fsharp
-// FlightDeck.Server/Program.fs
-let configureServices (services: IServiceCollection) =
-    services
-        .AddHostedService<BackupScheduler>()
-        // Other services...
-        .AddFalco() |> ignore
-
 // FlightDeck.Server/BackupScheduler.fs
 type BackupScheduler(backupService: BackupService, logger: ILogger<BackupScheduler>) =
     inherit BackgroundService()
     
-    override _.ExecuteAsync(cancellationToken) =
-        let rec loop() = async {
+    override _.ExecuteAsync(cancellationToken) = task {
+        while not cancellationToken.IsCancellationRequested do
             try
                 // Perform backup
-                let backupPath = backupService.CreateBackup()
+                let! backupPath = backupService.CreateBackup()
                 logger.LogInformation($"Backup created at {backupPath}")
             with ex ->
                 logger.LogError(ex, "Failed to create backup")
                 
             // Wait for next backup time
-            do! Async.Sleep(TimeSpan.FromHours(24).TotalMilliseconds |> int)
-            
-            if not cancellationToken.IsCancellationRequested then
-                return! loop()
-        }
-        
-        Async.StartAsTask(loop(), cancellationToken = cancellationToken)
+            do! Task.Delay(TimeSpan.FromHours(24), cancellationToken)
+    }
 ```
 
 ## Security Considerations
@@ -836,16 +835,17 @@ let configureServices (services: IServiceCollection) =
             options.HttpsPort <- 443
         )
         // Other services...
-        .AddFalco() |> ignore
+        .AddRouting()
+        |> ignore
 
-let configureApp (endpoints: HttpEndpoint list) (app: IApplicationBuilder) =
+let configureApp (app: IApplicationBuilder, env: IWebHostEnvironment) =
     if env.IsProduction() then
         app.UseHsts()
            .UseHttpsRedirection()
            |> ignore
            
     // Other middleware...
-    app.UseFalco(endpoints) |> ignore
+    app.UseOxpecker(endpoints) |> ignore
 ```
 
 ### Security Headers
@@ -854,19 +854,24 @@ Add security headers to all responses:
 
 ```fsharp
 // FlightDeck.Server/Program.fs
-let configureApp (endpoints: HttpEndpoint list) (app: IApplicationBuilder) =
-    app.Use(fun next ctx ->
-        ctx.Response.Headers.Add("X-Content-Type-Options", "nosniff")
-        ctx.Response.Headers.Add("X-Frame-Options", "DENY")
-        ctx.Response.Headers.Add("X-XSS-Protection", "1; mode=block")
-        ctx.Response.Headers.Add("Referrer-Policy", "strict-origin-when-cross-origin")
-        ctx.Response.Headers.Add("Content-Security-Policy", 
-            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;")
-            
-        next.Invoke(ctx))
-        // Other middleware...
-        .UseFalco(endpoints)
-        |> ignore
+let securityHeaders (next: RequestDelegate) (ctx: HttpContext) = task {
+    // Add Content-Security-Policy header
+    ctx.Response.Headers.Add("Content-Security-Policy", 
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;")
+    
+    // Add other security headers
+    ctx.Response.Headers.Add("X-Frame-Options", "DENY")
+    ctx.Response.Headers.Add("X-Content-Type-Options", "nosniff")
+    ctx.Response.Headers.Add("Referrer-Policy", "strict-origin-when-cross-origin")
+    
+    return! next.Invoke(ctx)
+}
+
+// In Program.fs configuration
+let configureApp (app: IApplicationBuilder) =
+    app.Use(securityHeaders)
+       // Other middleware...
+       |> ignore
 ```
 
 ## Conclusion

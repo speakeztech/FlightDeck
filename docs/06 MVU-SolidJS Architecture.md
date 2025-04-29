@@ -1,12 +1,12 @@
-# Architectural Memo: Implementing MVU Architecture with SolidJS in a Falco-Based Web Application
+# Architectural Memo: Implementing MVU Architecture with SolidJS in an Oxpecker-Based Web Application
 
 ## Executive Summary
 
-This memo outlines a hybrid architecture that combines server-rendered pages using Falco with client-side interactivity using the Model-View-Update (MVU) pattern implemented via SolidJS. The approach leverages F#'s type safety across the stack while enabling a responsive, modern user experience that maintains state across page transitions.
+This memo outlines a hybrid architecture that combines server-rendered pages using Oxpecker with client-side interactivity using the Model-View-Update (MVU) pattern implemented via SolidJS. The approach leverages F#'s type safety across the stack while enabling a responsive, modern user experience that maintains state across page transitions.
 
 ## Background
 
-FlightDeck is transitioning from a static site generator to a dynamic web application platform built on Falco. This evolution requires a thoughtful approach to client-side interactivity that maintains the benefits of server rendering while adding reactive UI capabilities through Oxpecker.Solid.
+FlightDeck is transitioning from a static site generator to a dynamic web application platform built on Oxpecker. This evolution requires a thoughtful approach to client-side interactivity that maintains the benefits of server rendering while adding reactive UI capabilities through Oxpecker.Solid.
 
 ## Architectural Goals
 
@@ -21,7 +21,7 @@ FlightDeck is transitioning from a static site generator to a dynamic web applic
 ```mermaid
 %%{init: {'theme': 'dark'}}%%
 flowchart TB
-    subgraph Server["Server Layer (Falco)"]
+    subgraph Server["Server Layer (Oxpecker)"]
         direction TB
         Handlers["HTTP Handlers"]
         Views["Page Templates"]
@@ -134,7 +134,7 @@ flowchart TD
 %%{init: {'theme': 'dark'}}%%
 sequenceDiagram
     participant User
-    participant Server as Falco Server
+    participant Server as Oxpecker Server
     participant Client as Browser
     participant MVU as MVU System
     
@@ -162,7 +162,7 @@ sequenceDiagram
 
 ## Code Organization
 
-### 1. Server-Side Structure (Falco)
+### 1. Server-Side Structure (Oxpecker)
 
 ```
 src/
@@ -405,40 +405,40 @@ let ContentEditor(props: {| serverData: string option |}) =
     let (globalState, _) = initGlobalMVU()
     
     // Render the editor component
-    div [ Class "content-editor" ] [
+    div [ class' "content-editor" ] [
         // Show error if present
         Show(state.error.IsSome, fun () ->
-            div [ Class "error-alert" ] [
+            div [ class' "error-alert" ] [
                 text (state.error |> Option.defaultValue "")
             ]
         )
         
         // Editor form
-        div [ Class "form-group" ] [
-            label [ For "title" ] [ text "Title" ]
+        div [ class' "form-group" ] [
+            label [ for' "title" ] [ text "Title" ]
             input [ 
-                Id "title"
-                Class "form-control"
-                Value state.title
-                OnInput (fun e -> contentDispatch (UpdateTitle e.target?value))
+                id "title"
+                class' "form-control"
+                value state.title
+                onInput (fun e -> contentDispatch (UpdateTitle e.target?value))
             ]
         ]
         
-        div [ Class "form-group" ] [
-            label [ For "body" ] [ text "Content" ]
+        div [ class' "form-group" ] [
+            label [ for' "body" ] [ text "Content" ]
             textarea [ 
-                Id "body"
-                Class "form-control"
-                Rows 10
-                Value state.body
-                OnInput (fun e -> contentDispatch (UpdateBody e.target?value))
+                id "body"
+                class' "form-control"
+                rows 10
+                value state.body
+                onInput (fun e -> contentDispatch (UpdateBody e.target?value))
             ] []
         ]
         
         button [ 
-            Class "btn btn-primary"
-            OnClick (fun _ -> contentDispatch SaveContent)
-            Disabled (state.isSaving || not state.isDirty)
+            class' "btn btn-primary"
+            onClick (fun _ -> contentDispatch SaveContent)
+            disabled (state.isSaving || not state.isDirty)
         ] [
             text (if state.isSaving then "Saving..." else "Save")
         ]
@@ -448,13 +448,13 @@ let ContentEditor(props: {| serverData: string option |}) =
 do registerHydratableComponent("ContentEditor", ContentEditor)
 ```
 
-### 3. Server-Side Integration (Falco)
+### 3. Server-Side Integration (Oxpecker)
 
 ```fsharp
 // FlightDeck.Server/Views/Layout.fs
 module FlightDeck.Server.Views.Layout
 
-open Falco.Markup
+open Oxpecker.ViewEngine
 open FlightDeck.Shared.Domain
 
 // Master layout with hydration points
@@ -465,25 +465,25 @@ let layout (ctx : SiteContents) active bodyCnt =
       |> Option.map (fun si -> si.title)
       |> Option.defaultValue ""
 
-    html [ Custom("data-theme", "dark") ] [
+    html [ _attr "data-theme" "dark" ] [
         head [] [
-            meta [ CharSet "utf-8" ]
-            meta [ Name "viewport"; Content "width=device-width, initial-scale=1" ]
-            title [] [ Text.raw ttl ]
+            meta [ _charset "utf-8" ]
+            meta [ _name "viewport"; _content "width=device-width, initial-scale=1" ]
+            title [] [ rawText ttl ]
             
             // Add client scripts
-            script [ Src "/js/solid.js" ] []
-            script [ Src "/js/app.js"; Type "module" ] []
+            script [ _src "/js/solid.js" ] []
+            script [ _src "/js/app.js"; _type "module" ] []
         ]
         body [] [
             // Toast container for global notifications
-            div [ Id "toast-container"; Class "fixed top-4 right-4 z-50" ] []
+            div [ _id "toast-container"; _class "fixed top-4 right-4 z-50" ] []
             
             // Main content
             yield! bodyCnt
             
             // Hydration initialization script
-            script [] [ Text.raw """
+            script [] [ rawText """
                 document.addEventListener('DOMContentLoaded', function() {
                     // Initialize hydration process
                     window.initializeHydration();
@@ -497,72 +497,74 @@ let layout (ctx : SiteContents) active bodyCnt =
 // FlightDeck.Server/Handlers/ContentHandler.fs
 module FlightDeck.Server.Handlers.ContentHandler
 
-open Falco
-open Falco.Markup
+open Oxpecker
 open FlightDeck.Core.Domain
 open FlightDeck.Server.Views
 
 // Handler for content editor page
 let editContent : HttpHandler =
-    Request.mapRoute (fun route -> 
-        let contentId = route.GetString "id" ""
-        contentId)
-        (fun contentId ctx ->
-            let contentService = ctx.GetService<IContentService>()
-            
-            // Different handling for new vs existing content
-            let content, initialState =
-                if contentId = "new" then
-                    // New content
-                    None, {| contentId = None; title = ""; body = ""; isDirty = false; isSaving = false; error = None |}
-                else
-                    // Existing content - fetch from service
-                    match contentService.GetContentById(contentId) with
-                    | Some c -> 
-                        Some c, 
-                        {| 
-                            contentId = Some contentId
-                            title = c.Title
-                            body = c.Content
-                            isDirty = false
-                            isSaving = false
-                            error = None
-                        |}
-                    | None -> None, {| contentId = None; title = ""; body = ""; isDirty = false; isSaving = false; error = None |}
-            
-            // Serialize initial state for hydration
-            let initialStateJson = System.Text.Json.JsonSerializer.Serialize(initialState)
-            
-            // Create the page with hydration point
-            Views.contentEditor 
-                content 
+    routef (fun contentId ctx -> task {
+        let contentService = ctx.GetService<IContentService>()
+        
+        // Different handling for new vs existing content
+        let! contentOpt, initialState =
+            if contentId = "new" then
+                // New content
+                task {
+                    return None, {| contentId = None; title = ""; body = ""; isDirty = false; isSaving = false; error = None |}
+                }
+            else
+                // Existing content - fetch from service
+                task {
+                    let! contentOpt = contentService.GetContentById(contentId)
+                    return 
+                        match contentOpt with
+                        | Some c -> 
+                            Some c, 
+                            {| 
+                                contentId = Some contentId
+                                title = c.Title
+                                body = c.Content
+                                isDirty = false
+                                isSaving = false
+                                error = None
+                            |}
+                        | None -> None, {| contentId = None; title = ""; body = ""; isDirty = false; isSaving = false; error = None |}
+                }
+        
+        // Serialize initial state for hydration
+        let initialStateJson = System.Text.Json.JsonSerializer.Serialize(initialState)
+        
+        // Create the page with hydration point
+        return! Views.contentEditor 
+                contentOpt 
                 [
-                    section [ Class "hero is-primary" ] [
-                        div [ Class "hero-body" ] [
-                            div [ Class "container" ] [
-                                h1 [ Class "title" ] [ 
-                                    Text.raw (if contentId = "new" then "Create New Content" else "Edit Content") 
+                    section [ _class "hero is-primary" ] [
+                        div [ _class "hero-body" ] [
+                            div [ _class "container" ] [
+                                h1 [ _class "title" ] [ 
+                                    rawText (if contentId = "new" then "Create New Content" else "Edit Content") 
                                 ]
                             ]
                         ]
                     ]
                     
-                    div [ Class "container mt-4" ] [
-                        div [ Class "card" ] [
-                            div [ Class "card-content" ] [
+                    div [ _class "container mt-4" ] [
+                        div [ _class "card" ] [
+                            div [ _class "card-content" ] [
                                 // Hydration point with data
                                 div [ 
-                                    Id "content-editor"
-                                    Custom("data-hydrate", "true")
-                                    Custom("data-component", "ContentEditor")
-                                    Custom("data-state", initialStateJson)
+                                    _id "content-editor"
+                                    _attr "data-hydrate" "true"
+                                    _attr "data-component" "ContentEditor"
+                                    _attr "data-state" initialStateJson
                                 ] []
                             ]
                         ]
                     ]
                 ]
-            |> Response.ofHtml
-            |> fun handler -> handler ctx)
+                ctx
+    })
 ```
 
 ### 4. Client Hydration System
@@ -644,7 +646,7 @@ flowchart TD
     NavigationOptions --> StateSync
 ```
 
-For a Falco-based application, I recommend the hybrid approach:
+For an Oxpecker-based application, I recommend the hybrid approach:
 
 1. Use regular navigation for major section changes and when SEO is critical
 2. Use client-side navigation for related pages within the same section
@@ -655,7 +657,7 @@ For a Falco-based application, I recommend the hybrid approach:
 ### Server-Side Rendering Optimization
 
 1. **Initial Load Performance**: Server-side rendering provides optimal First Contentful Paint (FCP)
-2. **Cache Control**: Implement appropriate HTTP caching headers in Falco handlers
+2. **Cache Control**: Implement appropriate HTTP caching headers in Oxpecker handlers
 3. **Static Asset Handling**: Use CDN for static assets with long cache durations
 
 ### Client-Side Optimization
@@ -686,11 +688,11 @@ For a Falco-based application, I recommend the hybrid approach:
 2. **Duplicate Rendering Logic**: Some rendering occurs on both server and client
    - Mitigation: Shared components through F# DSL
 
-3. **Learning Curve**: Developers must understand both Falco and Oxpecker.Solid
+3. **Learning Curve**: Developers must understand both Oxpecker and Oxpecker.Solid
    - Mitigation: Training and comprehensive documentation
 
 ## Conclusion
 
-The hybrid MVU architecture with Falco and SolidJS provides a powerful approach for building modern web applications that deliver both excellent performance and interactive user experiences. By leveraging F#'s type safety across the stack and SolidJS's efficient rendering, FlightDeck can provide a responsive and maintainable platform for content management and presentation.
+The hybrid MVU architecture with Oxpecker and SolidJS provides a powerful approach for building modern web applications that deliver both excellent performance and interactive user experiences. By leveraging F#'s type safety across the stack and SolidJS's efficient rendering, FlightDeck can provide a responsive and maintainable platform for content management and presentation.
 
 This approach aligns with current industry best practices in web development, emphasizing progressive enhancement, performance, and developer experience while providing a clear path for future evolution.

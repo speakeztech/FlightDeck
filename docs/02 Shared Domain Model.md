@@ -360,8 +360,8 @@ The server uses shared types to handle requests and generate responses:
 // FlightDeck.Server/Handlers/ContentHandlers.fs
 module FlightDeck.Server.Handlers.ContentHandlers
 
-open Falco
-open Falco.Markup
+open Oxpecker
+open Oxpecker.ViewEngine
 open FlightDeck.Shared.Domain
 open FlightDeck.Shared.Contracts
 open FlightDeck.Shared.Validation
@@ -369,14 +369,14 @@ open FlightDeck.Server.Services
 
 // Create content handler
 let createContent : HttpHandler =
-    Request.bindJson<CreateContentRequest> (fun request ctx ->
+    bindJson<CreateContentRequest> (fun request ctx -> task {
         // Validate request using shared validation rules
         match ContentValidators.validateCreateRequest request with
         | Valid validRequest ->
             let contentService = ctx.GetService<IContentService>()
             
             try
-                let content = contentService.CreateContent(validRequest)
+                let! content = contentService.CreateContent(validRequest)
                 
                 // Map domain model to response using shared contract type
                 let response: ApiResponse<ContentResponse> = {
@@ -387,7 +387,7 @@ let createContent : HttpHandler =
                         Title = content.Metadata.Title
                         Description = content.Metadata.Description
                         Content = content.Content
-                        RenderedContent = Some contentService.RenderContent(content)
+                        RenderedContent = Some (contentService.RenderContent(content))
                         Format = content.Format
                         Status = content.Status
                         CreatedAt = content.Metadata.CreatedAt.ToString("o")
@@ -398,7 +398,7 @@ let createContent : HttpHandler =
                     Errors = None
                 }
                 
-                Response.ofJson response ctx
+                return! json response ctx
             with ex ->
                 let errorResponse: ApiResponse<ContentResponse> = {
                     Success = false
@@ -410,9 +410,7 @@ let createContent : HttpHandler =
                     }]
                 }
                 
-                Response.withStatusCode 500
-                >> Response.ofJson errorResponse
-                |> fun handler -> handler ctx
+                return! (setStatusCode 500 >=> json errorResponse) ctx
         
         | Invalid errors ->
             let errorResponse: ApiResponse<ContentResponse> = {
@@ -425,9 +423,8 @@ let createContent : HttpHandler =
                 }]
             }
             
-            Response.withStatusCode 400
-            >> Response.ofJson errorResponse
-            |> fun handler -> handler ctx)
+            return! (setStatusCode 400 >=> json errorResponse) ctx
+    })
 ```
 
 ### Using Shared Types on the Client

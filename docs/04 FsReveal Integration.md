@@ -13,7 +13,7 @@ The FsReveal integration fits into the FlightDeck architecture as follows:
 flowchart TB
     subgraph Core["Core FlightDeck Architecture"]
         direction TB
-        Falco["Falco Web Server"]
+        Oxpecker["Oxpecker Web Server"]
         DomainModel["Shared Domain Model"]
         OxpeckerSolid["Oxpecker.Solid<br>Reactive Components"]
     end
@@ -40,7 +40,7 @@ flowchart TB
     end
     
     DomainModel <--> FsRevealEngine
-    Falco <--> FsRevealEngine
+    Oxpecker <--> FsRevealEngine
     OxpeckerSolid <--> Editor
 ```
 
@@ -460,14 +460,15 @@ module FlightDeck.Core.Presentations.PresentationStorage
 open System
 open System.IO
 open System.Text.Json
+open System.Threading.Tasks
 open FlightDeck.Shared.Domain
 
 // Storage provider for presentations
 type IPresentationStorage =
-    abstract member GetPresentation: PresentationId -> Presentation option
-    abstract member GetAllPresentations: unit -> Presentation list
-    abstract member SavePresentation: Presentation -> unit
-    abstract member DeletePresentation: PresentationId -> bool
+    abstract member GetPresentation: PresentationId -> Task<Presentation option>
+    abstract member GetAllPresentations: unit -> Task<Presentation list>
+    abstract member SavePresentation: Presentation -> Task<unit>
+    abstract member DeletePresentation: PresentationId -> Task<bool>
 
 // File-based implementation
 type FilePresentationStorage(storageDir: string) =
@@ -480,34 +481,47 @@ type FilePresentationStorage(storageDir: string) =
     let getFsRevealPath id = Path.Combine(storageDir, $"{id}.md")
     
     interface IPresentationStorage with
-        member _.GetPresentation(id) =
+        member _.GetPresentation(id) = task {
             let path = getPresentationPath id
             if File.Exists path then
-                JsonSerializer.Deserialize<Presentation>(File.ReadAllText(path)) |> Some
+                let! content = File.ReadAllTextAsync(path)
+                return JsonSerializer.Deserialize<Presentation>(content) |> Some
             else
-                None
+                return None
+        }
                 
-        member _.GetAllPresentations() =
-            Directory.GetFiles(storageDir, "*.json")
-            |> Array.choose (fun path ->
-                try 
-                    JsonSerializer.Deserialize<Presentation>(File.ReadAllText(path)) |> Some
-                with _ -> 
-                    None)
-            |> Array.toList
+        member _.GetAllPresentations() = task {
+            let files = Directory.GetFiles(storageDir, "*.json")
+            
+            let! results = files 
+                         |> Array.map (fun path -> task {
+                             try 
+                                 let! content = File.ReadAllTextAsync(path)
+                                 return JsonSerializer.Deserialize<Presentation>(content) |> Some
+                             with _ -> 
+                                 return None
+                         })
+                         |> Task.WhenAll
+                         
+            return results 
+                   |> Array.choose id
+                   |> Array.toList
+        }
                 
-        member _.SavePresentation(presentation) =
+        member _.SavePresentation(presentation) = task {
             let jsonPath = getPresentationPath presentation.Id
             let fsRevealPath = getFsRevealPath presentation.Id
             
             // Save JSON format for our application
-            File.WriteAllText(jsonPath, JsonSerializer.Serialize(presentation))
+            let json = JsonSerializer.Serialize(presentation, JsonSerializerOptions(WriteIndented = true))
+            do! File.WriteAllTextAsync(jsonPath, json)
             
             // Also save in FsReveal format for potential external use
             let fsRevealContent = FsRevealEngine.toPresentationFile presentation
-            File.WriteAllText(fsRevealPath, fsRevealContent)
+            do! File.WriteAllTextAsync(fsRevealPath, fsRevealContent)
+        }
                 
-        member _.DeletePresentation(id) =
+        member _.DeletePresentation(id) = task {
             let jsonPath = getPresentationPath id
             let fsRevealPath = getFsRevealPath id
             
@@ -517,7 +531,8 @@ type FilePresentationStorage(storageDir: string) =
             if jsonExists then File.Delete jsonPath
             if fsRevealExists then File.Delete fsRevealPath
             
-            jsonExists || fsRevealExists
+            return jsonExists || fsRevealExists
+        }
 ```
 
 ### Presentation Service
@@ -529,19 +544,20 @@ Create a service to handle presentation logic:
 module FlightDeck.Core.Presentations.PresentationService
 
 open System
+open System.Threading.Tasks
 open FlightDeck.Shared.Domain
 open FlightDeck.Core.Presentations.PresentationStorage
 
 // Presentation service interface
 type IPresentationService =
-    abstract member GetPresentation: PresentationId -> Presentation option
-    abstract member GetAllPresentations: unit -> Presentation list
-    abstract member CreatePresentation: string -> string -> string option -> Presentation
-    abstract member UpdatePresentation: Presentation -> Presentation option
-    abstract member DeletePresentation: PresentationId -> bool
-    abstract member ImportFromFsReveal: string -> string -> Presentation
-    abstract member ExportToPdf: PresentationId -> string -> bool
-    abstract member ExportToStandaloneHtml: PresentationId -> string -> bool
+    abstract member GetPresentation: PresentationId -> Task<Presentation option>
+    abstract member GetAllPresentations: unit -> Task<Presentation list>
+    abstract member CreatePresentation: string -> string -> string option -> Task<Presentation>
+    abstract member UpdatePresentation: Presentation -> Task<Presentation option>
+    abstract member DeletePresentation: PresentationId -> Task<bool>
+    abstract member ImportFromFsReveal: string -> string -> Task<Presentation>
+    abstract member ExportToPdf: PresentationId -> string -> Task<bool>
+    abstract member ExportToStandaloneHtml: PresentationId -> string -> Task<bool>
 
 // Implementation
 type PresentationService(storage: IPresentationStorage) =
@@ -553,7 +569,7 @@ type PresentationService(storage: IPresentationStorage) =
         member _.GetAllPresentations() =
             storage.GetAllPresentations()
             
-        member _.CreatePresentation(title, author, description) =
+        member _.CreatePresentation(title, author, description) = task {
             let id = Guid.NewGuid().ToString()
             let now = DateTime.UtcNow
             
@@ -587,12 +603,15 @@ type PresentationService(storage: IPresentationStorage) =
                 IsPublic = false
             }
             
-            storage.SavePresentation(presentation)
-            presentation
+            do! storage.SavePresentation(presentation)
+            return presentation
+        }
             
-        member _.UpdatePresentation(presentation) =
+        member _.UpdatePresentation(presentation) = task {
             // Check if presentation exists
-            match storage.GetPresentation(presentation.Id) with
+            let! existingPresentationOpt = storage.GetPresentation(presentation.Id)
+            
+            match existingPresentationOpt with
             | Some existingPresentation ->
                 // Update timestamp
                 let updatedPresentation = { 
@@ -601,48 +620,56 @@ type PresentationService(storage: IPresentationStorage) =
                         CreatedAt = existingPresentation.CreatedAt
                 }
                 
-                storage.SavePresentation(updatedPresentation)
-                Some updatedPresentation
+                do! storage.SavePresentation(updatedPresentation)
+                return Some updatedPresentation
                 
             | None ->
-                None
+                return None
+        }
                 
         member _.DeletePresentation(id) =
             storage.DeletePresentation(id)
             
-        member _.ImportFromFsReveal(content, author) =
+        member _.ImportFromFsReveal(content, author) = task {
             let id = Guid.NewGuid().ToString()
             let presentation = FsRevealEngine.fromPresentationFile content id author
             
-            storage.SavePresentation(presentation)
-            presentation
+            do! storage.SavePresentation(presentation)
+            return presentation
+        }
             
-        member _.ExportToPdf(id, outputPath) =
-            match storage.GetPresentation(id) with
+        member _.ExportToPdf(id, outputPath) = task {
+            let! presentationOpt = storage.GetPresentation(id)
+            
+            match presentationOpt with
             | Some presentation ->
                 try
                     FsRevealEngine.exportToPdf presentation outputPath
-                    true
+                    return true
                 with _ ->
-                    false
+                    return false
                     
             | None ->
-                false
+                return false
+        }
                 
-        member _.ExportToStandaloneHtml(id, outputPath) =
-            match storage.GetPresentation(id) with
+        member _.ExportToStandaloneHtml(id, outputPath) = task {
+            let! presentationOpt = storage.GetPresentation(id)
+            
+            match presentationOpt with
             | Some presentation ->
                 try
                     FsRevealEngine.exportToStandaloneHtml presentation outputPath
-                    true
+                    return true
                 with _ ->
-                    false
+                    return false
                     
             | None ->
-                false
+                return false
+        }
 ```
 
-### Falco API Handlers
+### Oxpecker API Handlers
 
 Create HTTP handlers for presentation management:
 
@@ -650,8 +677,8 @@ Create HTTP handlers for presentation management:
 // FlightDeck.Server/Handlers/PresentationHandlers.fs
 module FlightDeck.Server.Handlers.PresentationHandlers
 
-open Falco
-open Falco.Markup
+open System.IO
+open Oxpecker
 open FlightDeck.Shared.Domain
 open FlightDeck.Shared.Contracts
 open FlightDeck.Core.Presentations.PresentationService
@@ -659,9 +686,9 @@ open FlightDeck.Server.Views
 
 // List presentations
 let listPresentations : HttpHandler =
-    fun ctx ->
+    fun ctx -> task {
         let presentationService = ctx.GetService<IPresentationService>()
-        let presentations = presentationService.GetAllPresentations()
+        let! presentations = presentationService.GetAllPresentations()
         
         // Convert to response type
         let response = 
@@ -679,38 +706,34 @@ let listPresentations : HttpHandler =
                     IsPublic = p.IsPublic
                 })
         
-        Views.presentationList response
-        |> Response.ofHtml
-        |> fun handler -> handler ctx
+        return! Views.presentationList response ctx
+    }
 
 // View presentation
 let viewPresentation : HttpHandler =
-    Request.mapRoute (fun route -> 
-        let id = route.GetString "id" ""
-        id)
-        (fun id ctx ->
-            let presentationService = ctx.GetService<IPresentationService>()
+    routef (fun id ctx -> task {
+        let presentationService = ctx.GetService<IPresentationService>()
+        
+        let! presentationOpt = presentationService.GetPresentation(id)
+        
+        match presentationOpt with
+        | Some presentation ->
+            // Use the FsReveal engine to generate HTML
+            let presentationHtml = FsRevealEngine.generatePresentationHtml presentation
             
-            match presentationService.GetPresentation(id) with
-            | Some presentation ->
-                // Use the FsReveal engine to generate HTML
-                let presentationHtml = FsRevealEngine.generatePresentationHtml presentation
-                
-                // Return raw HTML - this bypasses our normal layout
-                Response.ofHtml (Text.raw presentationHtml) ctx
-                
-            | None ->
-                Response.withStatusCode 404
-                >> Error.notFound
-                |> fun handler -> handler ctx)
+            // Return raw HTML - this bypasses our normal layout
+            return! htmlString presentationHtml ctx
+            
+        | None ->
+            return! (setStatusCode 404 >=> Error.notFound) ctx
+    })
 
 // Create presentation
 let createPresentation : HttpHandler =
-    Request.bindJson<CreatePresentationRequest> (fun request ctx ->
+    bindJson<CreatePresentationRequest> (fun request ctx -> task {
         let presentationService = ctx.GetService<IPresentationService>()
-        let userId = "current-user-id" // In reality, get from auth context
         
-        let presentation = 
+        let! presentation = 
             presentationService.CreatePresentation(
                 request.Title, 
                 request.Author |> Option.defaultValue "Anonymous", 
@@ -729,37 +752,36 @@ let createPresentation : HttpHandler =
             IsPublic = presentation.IsPublic
         }
         
-        Response.ofJson response ctx)
+        return! json response ctx
+    })
 
 // Edit presentation interface
 let editPresentation : HttpHandler =
-    Request.mapRoute (fun route -> 
-        let id = route.GetString "id" ""
-        id)
-        (fun id ctx ->
-            let presentationService = ctx.GetService<IPresentationService>()
+    routef (fun id ctx -> task {
+        let presentationService = ctx.GetService<IPresentationService>()
+        
+        let! presentationOpt = presentationService.GetPresentation(id)
+        
+        match presentationOpt with
+        | Some presentation ->
+            // Convert to JSON for initial state
+            let serialized = System.Text.Json.JsonSerializer.Serialize(presentation)
             
-            match presentationService.GetPresentation(id) with
-            | Some presentation ->
-                // Convert to JSON for initial state
-                let serialized = System.Text.Json.JsonSerializer.Serialize(presentation)
-                
-                Views.presentationEditor presentation serialized
-                |> Response.ofHtml
-                |> fun handler -> handler ctx
-                
-            | None ->
-                Response.withStatusCode 404
-                >> Error.notFound
-                |> fun handler -> handler ctx)
+            return! Views.presentationEditor presentation serialized ctx
+            
+        | None ->
+            return! (setStatusCode 404 >=> Error.notFound) ctx
+    })
 
 // Update presentation
 let updatePresentation : HttpHandler =
-    Request.bindJson<UpdatePresentationRequest> (fun request ctx ->
+    bindJson<UpdatePresentationRequest> (fun request ctx -> task {
         let presentationService = ctx.GetService<IPresentationService>()
         
         // Check if presentation exists
-        match presentationService.GetPresentation(request.Id) with
+        let! existingPresentationOpt = presentationService.GetPresentation(request.Id)
+        
+        match existingPresentationOpt with
         | Some existingPresentation ->
             // Update fields from request
             let updatedPresentation = {
@@ -779,7 +801,9 @@ let updatePresentation : HttpHandler =
             }
             
             // Update in storage
-            match presentationService.UpdatePresentation(updatedPresentation) with
+            let! updatedPresentationOpt = presentationService.UpdatePresentation(updatedPresentation)
+            
+            match updatedPresentationOpt with
             | Some updated ->
                 // Convert to response
                 let response: ApiResponse<PresentationResponse> = {
@@ -806,7 +830,7 @@ let updatePresentation : HttpHandler =
                     Errors = None
                 }
                 
-                Response.ofJson response ctx
+                return! json response ctx
                 
             | None ->
                 let errorResponse: ApiResponse<PresentationResponse> = {
@@ -819,9 +843,7 @@ let updatePresentation : HttpHandler =
                     }]
                 }
                 
-                Response.withStatusCode 500
-                >> Response.ofJson errorResponse
-                |> fun handler -> handler ctx
+                return! (setStatusCode 500 >=> json errorResponse) ctx
                 
         | None ->
             let errorResponse: ApiResponse<PresentationResponse> = {
@@ -834,78 +856,69 @@ let updatePresentation : HttpHandler =
                 }]
             }
             
-            Response.withStatusCode 404
-            >> Response.ofJson errorResponse
-            |> fun handler -> handler ctx)
+            return! (setStatusCode 404 >=> json errorResponse) ctx
+    })
 
 // Delete presentation
 let deletePresentation : HttpHandler =
-    Request.mapRoute (fun route -> 
-        let id = route.GetString "id" ""
-        id)
-        (fun id ctx ->
-            let presentationService = ctx.GetService<IPresentationService>()
-            
-            if presentationService.DeletePresentation(id) then
-                Response.ofJson {| success = true |} ctx
-            else
-                Response.withStatusCode 404
-                >> Response.ofJson {| success = false; error = "Presentation not found" |}
-                |> fun handler -> handler ctx)
+    routef (fun id ctx -> task {
+        let presentationService = ctx.GetService<IPresentationService>()
+        
+        let! success = presentationService.DeletePresentation(id)
+        
+        if success then
+            return! json {| success = true |} ctx
+        else
+            return! (setStatusCode 404 >=> json {| success = false; error = "Presentation not found" |}) ctx
+    })
 
 // Export presentation as PDF
 let exportPresentationPdf : HttpHandler =
-    Request.mapRoute (fun route -> 
-        let id = route.GetString "id" ""
-        id)
-        (fun id ctx ->
-            let presentationService = ctx.GetService<IPresentationService>()
-            
-            // Create temporary file path
-            let tempFile = Path.GetTempFileName() + ".pdf"
-            
-            if presentationService.ExportToPdf(id, tempFile) then
-                // Send file to client
-                Response.withHeaders [
-                    "Content-Disposition", $"attachment; filename=\"presentation_{id}.pdf\""
-                ]
-                >> Response.ofFile "application/pdf" tempFile
-                |> fun handler -> handler ctx
-            else
-                Response.withStatusCode 404
-                >> Response.ofJson {| success = false; error = "Presentation not found or export failed" |}
-                |> fun handler -> handler ctx)
+    routef (fun id ctx -> task {
+        let presentationService = ctx.GetService<IPresentationService>()
+        
+        // Create temporary file path
+        let tempFile = Path.GetTempFileName() + ".pdf"
+        
+        let! success = presentationService.ExportToPdf(id, tempFile)
+        
+        if success then
+            // Send file to client
+            return! ctx |> (
+                setHttpHeader "Content-Disposition" $"attachment; filename=\"presentation_{id}.pdf\""
+                >=> streamFile false tempFile "application/pdf"
+            )
+        else
+            return! (setStatusCode 404 >=> json {| success = false; error = "Presentation not found or export failed" |}) ctx
+    })
 
 // Export presentation as standalone HTML
 let exportPresentationHtml : HttpHandler =
-    Request.mapRoute (fun route -> 
-        let id = route.GetString "id" ""
-        id)
-        (fun id ctx ->
-            let presentationService = ctx.GetService<IPresentationService>()
-            
-            // Create temporary file path
-            let tempFile = Path.GetTempFileName() + ".html"
-            
-            if presentationService.ExportToStandaloneHtml(id, tempFile) then
-                // Send file to client
-                Response.withHeaders [
-                    "Content-Disposition", $"attachment; filename=\"presentation_{id}.html\""
-                ]
-                >> Response.ofFile "text/html" tempFile
-                |> fun handler -> handler ctx
-            else
-                Response.withStatusCode 404
-                >> Response.ofJson {| success = false; error = "Presentation not found or export failed" |}
-                |> fun handler -> handler ctx)
+    routef (fun id ctx -> task {
+        let presentationService = ctx.GetService<IPresentationService>()
+        
+        // Create temporary file path
+        let tempFile = Path.GetTempFileName() + ".html"
+        
+        let! success = presentationService.ExportToStandaloneHtml(id, tempFile)
+        
+        if success then
+            // Send file to client
+            return! ctx |> (
+                setHttpHeader "Content-Disposition" $"attachment; filename=\"presentation_{id}.html\""
+                >=> streamFile false tempFile "text/html"
+            )
+        else
+            return! (setStatusCode 404 >=> json {| success = false; error = "Presentation not found or export failed" |}) ctx
+    })
 
 // Import presentation from FsReveal format
 let importPresentation : HttpHandler =
-    Request.bindForm<ImportPresentationRequest> (fun request ctx ->
+    bindForm<ImportPresentationRequest> (fun request ctx -> task {
         let presentationService = ctx.GetService<IPresentationService>()
         
         try
-            let presentation = presentationService.ImportFromFsReveal(request.Content, request.Author)
+            let! presentation = presentationService.ImportFromFsReveal(request.Content, request.Author)
             
             // Convert to response
             let response: ApiResponse<PresentationResponse> = {
@@ -932,7 +945,7 @@ let importPresentation : HttpHandler =
                 Errors = None
             }
             
-            Response.ofJson response ctx
+            return! json response ctx
         with ex ->
             let errorResponse: ApiResponse<PresentationResponse> = {
                 Success = false
@@ -944,9 +957,8 @@ let importPresentation : HttpHandler =
                 }]
             }
             
-            Response.withStatusCode 400
-            >> Response.ofJson errorResponse
-            |> fun handler -> handler ctx)
+            return! (setStatusCode 400 >=> json errorResponse) ctx
+    })
 ```
 
 ### View Templates
@@ -957,57 +969,57 @@ Create view templates for the presentation UI:
 // FlightDeck.Server/Views/PresentationViews.fs
 module FlightDeck.Server.Views.PresentationViews
 
-open Falco.Markup
+open Oxpecker.ViewEngine
 open FlightDeck.Shared.Domain
 open FlightDeck.Shared.Contracts
 
 // Presentation list view
 let presentationList (presentations: PresentationListItem list) =
     masterLayout "Presentations" [
-        Elem.div [ Attr.class' "presentation-header" ] [
-            Elem.h1 [] [ Text.raw "Presentations" ]
-            Elem.div [ Attr.class' "actions" ] [
-                Elem.a [ 
-                    Attr.href "/presentations/create"
-                    Attr.class' "button primary" 
-                ] [ Text.raw "Create New Presentation" ]
+        div [ _class "presentation-header" ] [
+            h1 [] [ rawText "Presentations" ]
+            div [ _class "actions" ] [
+                a [ 
+                    _href "/presentations/create"
+                    _class "button primary" 
+                ] [ rawText "Create New Presentation" ]
                 
-                Elem.a [ 
-                    Attr.href "/presentations/import"
-                    Attr.class' "button secondary" 
-                ] [ Text.raw "Import" ]
+                a [ 
+                    _href "/presentations/import"
+                    _class "button secondary" 
+                ] [ rawText "Import" ]
             ]
         ]
         
-        Elem.div [ Attr.class' "presentation-list" ] [
+        div [ _class "presentation-list" ] [
             if presentations.Length = 0 then
-                Elem.div [ Attr.class' "empty-state" ] [
-                    Elem.p [] [ Text.raw "No presentations yet. Create your first one!" ]
+                div [ _class "empty-state" ] [
+                    p [] [ rawText "No presentations yet. Create your first one!" ]
                 ]
             else
-                Elem.div [ Attr.class' "presentation-grid" ] [
+                div [ _class "presentation-grid" ] [
                     for p in presentations do
-                        Elem.div [ Attr.class' "presentation-card" ] [
-                            Elem.div [ Attr.class' "card-header" ] [
-                                Elem.h3 [] [ Text.raw p.Title ]
+                        div [ _class "presentation-card" ] [
+                            div [ _class "card-header" ] [
+                                h3 [] [ rawText p.Title ]
                             ]
                             
-                            Elem.div [ Attr.class' "card-body" ] [
-                                Elem.p [ Attr.class' "description" ] [ 
-                                    Text.raw (p.Description |> Option.defaultValue "No description") 
+                            div [ _class "card-body" ] [
+                                p [ _class "description" ] [ 
+                                    rawText (p.Description |> Option.defaultValue "No description") 
                                 ]
                                 
-                                Elem.div [ Attr.class' "meta" ] [
-                                    Elem.span [ Attr.class' "slides" ] [ 
-                                        Text.raw $"{p.SlideCount} slides" 
+                                div [ _class "meta" ] [
+                                    span [ _class "slides" ] [ 
+                                        rawText $"{p.SlideCount} slides" 
                                     ]
                                     
-                                    Elem.span [ Attr.class' "author" ] [ 
-                                        Text.raw $"By {p.Author}" 
+                                    span [ _class "author" ] [ 
+                                        rawText $"By {p.Author}" 
                                     ]
                                     
-                                    Elem.span [ Attr.class' "date" ] [ 
-                                        Text.raw (
+                                    span [ _class "date" ] [ 
+                                        rawText (
                                             try
                                                 let date = System.DateTime.Parse(p.UpdatedAt)
                                                 date.ToString("MMM d, yyyy")
@@ -1018,37 +1030,37 @@ let presentationList (presentations: PresentationListItem list) =
                                 ]
                             ]
                             
-                            Elem.div [ Attr.class' "card-footer" ] [
-                                Elem.a [ 
-                                    Attr.href $"/presentations/{p.Id}"
-                                    Attr.class' "button view" 
-                                    Attr.target "_blank"
-                                ] [ Text.raw "View" ]
+                            div [ _class "card-footer" ] [
+                                a [ 
+                                    _href $"/presentations/{p.Id}"
+                                    _class "button view" 
+                                    _target "_blank"
+                                ] [ rawText "View" ]
                                 
-                                Elem.a [ 
-                                    Attr.href $"/presentations/{p.Id}/edit"
-                                    Attr.class' "button edit" 
-                                ] [ Text.raw "Edit" ]
+                                a [ 
+                                    _href $"/presentations/{p.Id}/edit"
+                                    _class "button edit" 
+                                ] [ rawText "Edit" ]
                                 
-                                Elem.div [ Attr.class' "dropdown" ] [
-                                    Elem.button [ 
-                                        Attr.class' "button more"
-                                        Attr.type' "button"
-                                    ] [ Text.raw "⋮" ]
+                                div [ _class "dropdown" ] [
+                                    button [ 
+                                        _class "button more"
+                                        _type "button"
+                                    ] [ rawText "⋮" ]
                                     
-                                    Elem.div [ Attr.class' "dropdown-content" ] [
-                                        Elem.a [ 
-                                            Attr.href $"/presentations/{p.Id}/export/pdf"
-                                        ] [ Text.raw "Export as PDF" ]
+                                    div [ _class "dropdown-content" ] [
+                                        a [ 
+                                            _href $"/presentations/{p.Id}/export/pdf"
+                                        ] [ rawText "Export as PDF" ]
                                         
-                                        Elem.a [ 
-                                            Attr.href $"/presentations/{p.Id}/export/html"
-                                        ] [ Text.raw "Export as HTML" ]
+                                        a [ 
+                                            _href $"/presentations/{p.Id}/export/html"
+                                        ] [ rawText "Export as HTML" ]
                                         
-                                        Elem.button [ 
-                                            Attr.class' "delete-button"
-                                            Attr.data "presentation-id" p.Id
-                                        ] [ Text.raw "Delete" ]
+                                        button [ 
+                                            _class "delete-button"
+                                            attr "data-presentation-id" p.Id
+                                        ] [ rawText "Delete" ]
                                     ]
                                 ]
                             ]
@@ -1057,113 +1069,116 @@ let presentationList (presentations: PresentationListItem list) =
         ]
         
         // Mount Oxpecker.Solid component for interactivity
-        Elem.div [ 
-            Attr.id "presentation-app"
-            Attr.data "initial-data" (System.Text.Json.JsonSerializer.Serialize(presentations))
+        div [ 
+            _id "presentation-app"
+            attr "data-initial-data" (System.Text.Json.JsonSerializer.Serialize(presentations))
         ] []
         
         // Add reactive script
-        Elem.script [
-            Attr.src "/js/presentations.js"
-            Attr.type' "module"
-            Attr.defer
+        script [
+            _src "/js/presentations.js"
+            _type "module"
+            _defer
         ] []
     ]
+    |> htmlView
 
 // Presentation editor view
 let presentationEditor (presentation: Presentation) (initialData: string) =
     masterLayout $"Editing: {presentation.Title}" [
-        Elem.div [ Attr.class' "editor-header" ] [
-            Elem.h1 [] [ Text.raw $"Editing: {presentation.Title}" ]
-            Elem.div [ Attr.class' "actions" ] [
-                Elem.a [ 
-                    Attr.href "/presentations"
-                    Attr.class' "button secondary" 
-                ] [ Text.raw "Back to Presentations" ]
+        div [ _class "editor-header" ] [
+            h1 [] [ rawText $"Editing: {presentation.Title}" ]
+            div [ _class "actions" ] [
+                a [ 
+                    _href "/presentations"
+                    _class "button secondary" 
+                ] [ rawText "Back to Presentations" ]
                 
-                Elem.a [ 
-                    Attr.href $"/presentations/{presentation.Id}"
-                    Attr.class' "button primary"
-                    Attr.target "_blank"
-                ] [ Text.raw "View Presentation" ]
+                a [ 
+                    _href $"/presentations/{presentation.Id}"
+                    _class "button primary"
+                    _target "_blank"
+                ] [ rawText "View Presentation" ]
             ]
         ]
         
         // Editor container - will be replaced by Oxpecker.Solid
-        Elem.div [ 
-            Attr.id "presentation-editor"
-            Attr.data "presentation-id" presentation.Id
-            Attr.data "initial-data" initialData
+        div [ 
+            _id "presentation-editor"
+            attr "data-presentation-id" presentation.Id
+            attr "data-initial-data" initialData
         ] []
         
         // Add reactive script
-        Elem.script [
-            Attr.src "/js/presentation-editor.js"
-            Attr.type' "module"
-            Attr.defer
+        script [
+            _src "/js/presentation-editor.js"
+            _type "module"
+            _defer
         ] []
     ]
+    |> htmlView
 
 // Import presentation view
 let importPresentation() =
     masterLayout "Import Presentation" [
-        Elem.div [ Attr.class' "import-header" ] [
-            Elem.h1 [] [ Text.raw "Import Presentation" ]
-            Elem.div [ Attr.class' "actions" ] [
-                Elem.a [ 
-                    Attr.href "/presentations"
-                    Attr.class' "button secondary" 
-                ] [ Text.raw "Back to Presentations" ]
+        div [ _class "import-header" ] [
+            h1 [] [ rawText "Import Presentation" ]
+            div [ _class "actions" ] [
+                a [ 
+                    _href "/presentations"
+                    _class "button secondary" 
+                ] [ rawText "Back to Presentations" ]
             ]
         ]
         
         // Import form
-        Elem.form [ 
-            Attr.id "import-form"
-            Attr.action "/api/presentations/import"
-            Attr.method "post"
+        form [ 
+            _id "import-form"
+            _action "/api/presentations/import"
+            _method "post"
         ] [
-            Elem.div [ Attr.class' "form-group" ] [
-                Elem.label [ Attr.for' "author" ] [ Text.raw "Author" ]
-                Elem.input [ 
-                    Attr.id "author"
-                    Attr.name "author"
-                    Attr.type' "text"
-                    Attr.required true
+            div [ _class "form-group" ] [
+                label [ _for "author" ] [ rawText "Author" ]
+                input [ 
+                    _id "author"
+                    _name "author"
+                    _type "text"
+                    _required
                 ]
             ]
             
-            Elem.div [ Attr.class' "form-group" ] [
-                Elem.label [ Attr.for' "content" ] [ Text.raw "FsReveal Content" ]
-                Elem.textarea [ 
-                    Attr.id "content"
-                    Attr.name "content"
-                    Attr.rows 20
-                    Attr.required true
+            div [ _class "form-group" ] [
+                label [ _for "content" ] [ rawText "FsReveal Content" ]
+                textarea [ 
+                    _id "content"
+                    _name "content"
+                    _rows 20
+                    _required
                 ] []
-                Elem.div [ Attr.class' "form-help" ] [
-                    Text.raw "Paste FsReveal markdown content here. Format should include frontmatter and slides."
+                div [ _class "form-help" ] [
+                    rawText "Paste FsReveal markdown content here. Format should include frontmatter and slides."
                 ]
             ]
             
-            Elem.div [ Attr.class' "form-actions" ] [
-                Elem.button [ 
-                    Attr.type' "submit"
-                    Attr.class' "button primary" 
-                ] [ Text.raw "Import" ]
+            div [ _class "form-actions" ] [
+                button [ 
+                    _type "submit"
+                    _class "button primary" 
+                ] [ rawText "Import" ]
             ]
         ]
         
         // Mount Oxpecker.Solid component for interactivity
-        Elem.div [ Attr.id "import-app" ] []
+        div [ _id "import-app" ] []
         
         // Add reactive script
-        Elem.script [
-            Attr.src "/js/presentation-import.js"
-            Attr.type' "module"
-            Attr.defer
+        script [
+            _src "/js/presentation-import.js"
+            _type "module"
+            _defer
         ] []
     ]
+    |> htmlView
 ```
 
 ### Editor Component
@@ -1174,7 +1189,6 @@ Create an Oxpecker.Solid component for the presentation editor:
 // FlightDeck.Client/Pages/PresentationEditor.fs
 module FlightDeck.Client.Pages.PresentationEditor
 
-open Oxpecker
 open Oxpecker.Solid
 open Browser.Dom
 open FlightDeck.Shared.Domain
@@ -1611,33 +1625,48 @@ mount()
 
 ### Endpoint Configuration
 
-Configure the Falco endpoints:
+Configure the Oxpecker endpoints:
 
 ```fsharp
 // FlightDeck.Server/Endpoints.fs
 module FlightDeck.Server.Endpoints
 
-open Falco.Routing
+open Oxpecker
 open FlightDeck.Server.Handlers
 
 // Add presentation endpoints
 let presentationEndpoints = [
     // UI routes
-    get "/presentations" PresentationHandlers.listPresentations
-    get "/presentations/create" PresentationHandlers.createPresentationForm
-    get "/presentations/import" PresentationHandlers.importPresentationForm
-    get "/presentations/{id}" PresentationHandlers.viewPresentation
-    get "/presentations/{id}/edit" PresentationHandlers.editPresentation
+    GET [
+        route "/presentations" PresentationHandlers.listPresentations
+        route "/presentations/create" PresentationHandlers.createPresentationForm
+        route "/presentations/import" PresentationHandlers.importPresentationForm
+        route "/presentations/{id}" PresentationHandlers.viewPresentation
+        route "/presentations/{id}/edit" PresentationHandlers.editPresentation
+    ]
     
     // API routes
-    post "/api/presentations" PresentationHandlers.createPresentation
-    put "/api/presentations/{id}" PresentationHandlers.updatePresentation
-    delete "/api/presentations/{id}" PresentationHandlers.deletePresentation
-    post "/api/presentations/import" PresentationHandlers.importPresentation
+    POST [
+        route "/api/presentations" PresentationHandlers.createPresentation
+    ]
+    
+    PUT [
+        route "/api/presentations/{id}" PresentationHandlers.updatePresentation
+    ]
+    
+    DELETE [
+        route "/api/presentations/{id}" PresentationHandlers.deletePresentation
+    ]
+    
+    POST [
+        route "/api/presentations/import" PresentationHandlers.importPresentation
+    ]
     
     // Export routes
-    get "/presentations/{id}/export/pdf" PresentationHandlers.exportPresentationPdf
-    get "/presentations/{id}/export/html" PresentationHandlers.exportPresentationHtml
+    GET [
+        route "/presentations/{id}/export/pdf" PresentationHandlers.exportPresentationPdf
+        route "/presentations/{id}/export/html" PresentationHandlers.exportPresentationHtml
+    ]
 ]
 
 // Add to main endpoints
@@ -1674,8 +1703,8 @@ let configureServices (services: IServiceCollection) =
         .AddSingleton<IPresentationService>(fun sp ->
             let storage = sp.GetService<IPresentationStorage>()
             PresentationService(storage) :> IPresentationService)
-            
-        .AddFalco()
+        
+        // Add other services
         |> ignore
 ```
 
@@ -1687,7 +1716,7 @@ Ensure the reveal.js library is included in your static files:
 
 ```fsharp
 // FlightDeck.Server/Program.fs
-let configureApp (endpoints: HttpEndpoint list) (app: IApplicationBuilder) =
+let configureApp (app: IApplicationBuilder) =
     app.UseStaticFiles(StaticFileOptions(
             OnPrepareResponse = fun ctx ->
                 // Cache static assets for a year
@@ -1695,7 +1724,7 @@ let configureApp (endpoints: HttpEndpoint list) (app: IApplicationBuilder) =
                     "Cache-Control", 
                     "public, max-age=31536000")
         ))
-        .UseFalco(endpoints)
+        // Other middleware...
         |> ignore
 ```
 
@@ -1788,7 +1817,7 @@ flowchart TB
 
 ## Conclusion
 
-Integrating FsReveal into the FlightDeck architecture provides a powerful way to create, manage, and deliver presentations directly from your platform. This integration leverages the flexibility of Falco, the reactivity of Oxpecker.Solid, and the presentation capabilities of reveal.js, all within a fully F# codebase.
+Integrating FsReveal into the FlightDeck architecture provides a powerful way to create, manage, and deliver presentations directly from your platform. This integration leverages the flexibility of Oxpecker, the reactivity of Oxpecker.Solid, and the presentation capabilities of reveal.js, all within a fully F# codebase.
 
 Key benefits of this approach include:
 
