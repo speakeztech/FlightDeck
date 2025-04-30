@@ -186,7 +186,7 @@ data-source = "sales-forecast"
 parameters = ["forecast-confidence"]
 columns = ["Product", "Q4 (Projected)", "Confidence Interval"]
 ```
-```
+
 
 ## Component Model with FSharp.Formatting
 
