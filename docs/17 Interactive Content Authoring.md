@@ -350,106 +350,246 @@ testGrowth |> Array.take 5
 
 The output of this script would be captured by FSharp.Formatting and made available to components referencing it.
 
-## Client-Side Integration
+## Client-Side Integration with Oxpecker.Solid
 
-The client-side runtime integrates script evaluation results with interactive components:
+The client-side runtime integrates script evaluation results with interactive components using Oxpecker.Solid:
 
-```typescript
-// client-side runtime (TypeScript)
-class InteractiveContent {
-    private components: Map<string, InteractiveComponent> = new Map();
-    private parameters: Map<string, any> = new Map();
-    private scriptResults: Map<string, any> = new Map();
-    
-    constructor(config: InteractiveContentConfig) {
-        // Initialize script results
-        for (const [id, result] of Object.entries(config.scriptResults)) {
-            this.scriptResults.set(id, result);
-        }
-        
-        // Initialize parameters with defaults
-        for (const [id, value] of Object.entries(config.parameters)) {
-            this.parameters.set(id, value);
-        }
-        
-        // Initialize components
-        for (const componentConfig of config.components) {
-            const element = document.getElementById(`component-${componentConfig.id}`);
-            if (!element) continue;
-            
-            // Create component
-            const componentType = componentConfig.type;
-            const ComponentClass = COMPONENT_REGISTRY.get(componentType);
-            
-            if (!ComponentClass) {
-                console.error(`Unknown component type: ${componentType}`);
-                continue;
-            }
-            
-            // Resolve data source if specified
-            let data = null;
-            if (componentConfig.dataSource) {
-                data = this.resolveDataSource(componentConfig.dataSource);
-            }
-            
-            // Create component instance
-            const component = new ComponentClass({
-                element,
-                config: componentConfig.config,
-                data,
-                parameters: this.parameters
-            });
-            
-            this.components.set(componentConfig.id, component);
-            
-            // Initialize component
-            component.initialize();
-        }
-        
-        // Set up parameter change listeners
-        for (const [id, component] of this.components.entries()) {
-            if (!component.parameterDependencies) continue;
-            
-            for (const paramId of component.parameterDependencies) {
-                this.addParameterListener(paramId, id);
-            }
-        }
-    }
-    
-    // Resolve data source (file or script result)
-    private resolveDataSource(source: string): any {
-        // Check if it's a script result
-        if (this.scriptResults.has(source)) {
-            return this.scriptResults.get(source);
-        }
-        
-        // Assume it's a file reference
-        // In real implementation, would load from URL
-        console.warn(`Data source not found: ${source}`);
-        return null;
-    }
-    
-    // Handle parameter changes
-    public setParameter(paramId: string, value: any): void {
-        const oldValue = this.parameters.get(paramId);
-        if (value === oldValue) return;
-        
-        this.parameters.set(paramId, value);
-        
-        // Notify dependent components
-        this.notifyParameterChanged(paramId, value, oldValue);
-    }
-    
-    // Add parameter change listener
-    private addParameterListener(paramId: string, componentId: string): void {
-        // Implementation omitted for brevity
-    }
-    
-    // Notify components of parameter changes
-    private notifyParameterChanged(paramId: string, newValue: any, oldValue: any): void {
-        // Implementation omitted for brevity
-    }
+```fsharp
+// FlightDeck.Client/Interactive/InteractiveContent.fs
+module FlightDeck.Client.Interactive.InteractiveContent
+
+open System
+open System.Collections.Generic
+open Oxpecker.Solid
+open FlightDeck.Shared.Interactive
+
+// Configuration type for interactive content
+type InteractiveContentConfig = {
+    Components: InteractiveComponent[]
+    ScriptResults: Map<string, obj>
+    Parameters: Map<string, obj>
 }
+
+// Interactive content module with client-side runtime
+let initializeInteractiveContent (config: InteractiveContentConfig) =
+    // State for components, parameters, and script results
+    let (components, setComponents) = createStore<Map<string, obj>>(Map.empty)
+    let (parameters, setParameters) = createStore<Map<string, obj>>(config.Parameters)
+    let (scriptResults, _) = createSignal(config.ScriptResults)
+    
+    // Initialize components
+    for componentConfig in config.Components do
+        // Find DOM element
+        let elementId = $"component-{componentConfig.Id}"
+        let element = Browser.Dom.document.getElementById(elementId)
+        
+        if not (isNull element) then
+            // Get component type
+            let componentType = componentConfig.Type
+            match ComponentRegistry.getComponentProvider componentType with
+            | Some provider ->
+                // Resolve data source
+                let data = 
+                    match componentConfig.DataSource with
+                    | Some source ->
+                        // Try to get from script results
+                        match Map.tryFind source config.ScriptResults with
+                        | Some result -> Some result
+                        | None -> 
+                            // Otherwise try to load from URL (implemented elsewhere)
+                            None
+                    | None -> None
+                
+                // Create component props
+                let props = {|
+                    Element = element
+                    Config = componentConfig.Config
+                    Data = data
+                    Parameters = parameters
+                |}
+                
+                // Create and initialize component
+                let component = provider.CreateComponent(componentConfig.Id, props)
+                
+                // Store component reference
+                setComponents(fun s -> Map.add componentConfig.Id component s)
+                
+            | None -> 
+                Browser.Dom.console.error($"Unknown component type: {componentType}")
+    
+    // Parameter change handler
+    let setParameter (paramId: string) (value: obj) =
+        let currentValue = Map.tryFind paramId parameters
+        
+        // Only update if value changed
+        if currentValue <> Some value then
+            // Update parameter value
+            setParameters(fun p -> Map.add paramId value p)
+            
+            // Notify dependent components
+            config.Components
+            |> Array.filter (fun c -> List.contains paramId c.ParameterDependencies)
+            |> Array.iter (fun c ->
+                match Map.tryFind c.Id components with
+                | Some component ->
+                    // Each component type implements IInteractiveComponent with HandleParameterChanged
+                    (component :?> IInteractiveComponent).HandleParameterChanged(paramId, value)
+                | None -> ()
+            )
+    
+    // Return public interface
+    {
+        Parameters = parameters
+        SetParameter = setParameter
+    }
+
+// Component interface
+type IInteractiveComponent =
+    abstract member HandleParameterChanged: string * obj -> unit
+    abstract member Refresh: unit -> unit
+
+// Component registry
+module ComponentRegistry =
+    // Registry of component providers
+    let private providers = Dictionary<string, IComponentProvider>()
+    
+    // Register component provider
+    let registerComponent (provider: IComponentProvider) =
+        providers.Add(provider.ComponentType, provider)
+    
+    // Get component provider
+    let getComponentProvider (componentType: string) =
+        match providers.TryGetValue(componentType) with
+        | true, provider -> Some provider
+        | _ -> None
+```
+
+## Component Implementations with Oxpecker.Solid
+
+Here's an example implementation of a chart component using Oxpecker.Solid:
+
+```fsharp
+// FlightDeck.Client/Interactive/Components/ChartComponent.fs
+module FlightDeck.Client.Interactive.Components.ChartComponent
+
+open Oxpecker.Solid
+open FlightDeck.Client.Interactive.InteractiveContent
+
+// Chart component provider
+type ChartComponentProvider() =
+    interface IComponentProvider with
+        member this.ComponentType = "chart"
+        
+        member this.CreateComponent(id, props) =
+            ChartComponent(id, props) :> obj
+
+// Chart component implementation
+type ChartComponent(id: string, props: {| Element: Browser.Types.Element; Config: Map<string, obj>; Data: obj option; Parameters: Map<string, obj> |}) =
+    // Extract configuration
+    let chartType = 
+        match props.Config.TryFind("type") with
+        | Some t -> t :?> string
+        | None -> "bar" // Default
+        
+    let xField = 
+        match props.Config.TryFind("x-field") with
+        | Some f -> f :?> string
+        | None -> ""
+        
+    let yField =
+        match props.Config.TryFind("y-field") with
+        | Some f -> f :?> string
+        | None -> ""
+        
+    let height =
+        match props.Config.TryFind("height") with
+        | Some h -> h :?> int
+        | None -> 300 // Default height
+    
+    // Internal state using reactive primitives
+    let (chartData, setChartData) = createSignal([||])
+    let (filteredData, setFilteredData) = createSignal([||])
+    
+    // Initialize data
+    do
+        match props.Data with
+        | Some data ->
+            let dataArray = data :?> array<obj>
+            setChartData(dataArray)
+            setFilteredData(dataArray)
+        | None -> ()
+    
+    // Apply filters based on parameters
+    let applyFilters() =
+        let filters =
+            match props.Config.TryFind("filters") with
+            | Some f -> f :?> array<Map<string, string>>
+            | None -> [||]
+            
+        // Apply each filter if parameter exists
+        let filtered =
+            filters
+            |> Array.fold (fun data filter ->
+                let paramName = filter.["parameter"]
+                let fieldName = filter.["field"]
+                
+                match Map.tryFind paramName props.Parameters with
+                | Some paramValue when paramValue :?> string <> "All" ->
+                    // Filter data where field matches parameter value
+                    data |> Array.filter (fun item ->
+                        let itemObj = item :?> {| |}
+                        let fieldValue = itemObj.GetType().GetProperty(fieldName).GetValue(itemObj) :?> string
+                        fieldValue = (paramValue :?> string)
+                    )
+                | _ -> data // No filtering needed
+            ) chartData()
+            
+        setFilteredData(filtered)
+    
+    // Render chart using appropriate library
+    let renderChart() =
+        // Clear previous chart if any
+        while props.Element.firstChild <> null do
+            props.Element.removeChild(props.Element.firstChild) |> ignore
+            
+        // Get chart data
+        let data = filteredData()
+        
+        // Render using appropriate chart library
+        // This is just a placeholder - actual implementation would use a charting library
+        let svg = Browser.Dom.document.createElementNS("http://www.w3.org/2000/svg", "svg")
+        svg.setAttribute("width", "100%")
+        svg.setAttribute("height", string height)
+        
+        // Add placeholder text
+        let text = Browser.Dom.document.createElementNS("http://www.w3.org/2000/svg", "text")
+        text.setAttribute("x", "50%")
+        text.setAttribute("y", "50%")
+        text.setAttribute("text-anchor", "middle")
+        text.textContent <- $"{chartType} chart with {data.Length} data points"
+        
+        svg.appendChild(text) |> ignore
+        props.Element.appendChild(svg) |> ignore
+        
+    // Initialize chart on mount
+    do
+        createEffect(fun () ->
+            // Recalculate filtered data when parameters change
+            let _ = props.Parameters
+            applyFilters()
+            renderChart()
+        )
+    
+    // Implement IInteractiveComponent interface
+    interface IInteractiveComponent with
+        member this.HandleParameterChanged(_, _) =
+            // Parameters already captured via createEffect above
+            // No additional handling needed here
+            ()
+            
+        member this.Refresh() =
+            applyFilters()
+            renderChart()
 ```
 
 ## Plugin Implementation for FlightDeck
@@ -704,6 +844,110 @@ let analyzeTrend (region: string) (products: string[]) =
     $"{fastestGrowing} shows the strongest growth trend {regionText} with particularly strong performance in the second half of the year."
 ```
 
+## Server-Side Integration in Oxpecker
+
+The server-side integration with Oxpecker renders the initial content and provides the data for client hydration:
+
+```fsharp
+// FlightDeck.Server/Handlers/InteractiveContentHandler.fs
+module FlightDeck.Server.Handlers.InteractiveContentHandler
+
+open System
+open System.IO
+open System.Text.Json
+open Oxpecker
+open FlightDeck.Core.Interactive
+open FlightDeck.Shared.Interactive
+
+// Handler for interactive content pages
+let viewInteractiveContent : HttpHandler =
+    routef (fun slug ctx -> task {
+        // Get content service
+        let contentService = ctx.GetService<IContentService>()
+        let interactiveService = ctx.GetService<IInteractiveContentService>()
+        
+        // Get content by slug
+        let! contentOpt = contentService.GetContentBySlug(slug)
+        
+        match contentOpt with
+        | Some content ->
+            // Check if this is interactive content
+            let isFrontmatter = content.Frontmatter
+            
+            let isInteractive =
+                match isFrontmatter.TryFind("interactive.enabled") with
+                | Some value -> value :?> bool
+                | None -> false
+                
+            if isInteractive then
+                // Process as interactive content
+                let contentDir = Path.GetDirectoryName(content.FilePath)
+                let! processed = interactiveService.ProcessContent(content.RawContent, contentDir)
+                
+                // Generate client config
+                let clientConfig = JsonSerializer.Serialize(
+                    {|
+                        Components = processed.Components
+                        ScriptResults = processed.ScriptResults
+                        Parameters = processed.Parameters
+                    |},
+                    JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.CamelCase)
+                )
+                
+                // Render interactive content view
+                return! 
+                    Views.interactiveContentView
+                        content.Title
+                        processed.Html
+                        clientConfig
+                        ctx
+            else
+                // Render regular content
+                return! Views.contentView content ctx
+        | None ->
+            // Content not found
+            return! (setStatusCode 404 >=> Error.notFound) ctx
+    })
+
+// Initial hydration script
+let interactiveContentView (title: string) (contentHtml: string) (clientConfig: string) =
+    Oxpecker.ViewEngine.html [
+        Oxpecker.ViewEngine._lang "en"
+    ] [
+        Oxpecker.ViewEngine.head [] [
+            Oxpecker.ViewEngine.title [] [ Oxpecker.ViewEngine.rawText title ]
+            // CSS and other head elements
+        ]
+        Oxpecker.ViewEngine.body [] [
+            // Content container that will be enhanced
+            Oxpecker.ViewEngine.div [
+                Oxpecker.ViewEngine._id "content"
+                Oxpecker.ViewEngine._class "interactive-content"
+                Oxpecker.ViewEngine.attr "data-interactive" "true"
+                Oxpecker.ViewEngine.dangerouslySetInnerHTML contentHtml
+            ] []
+            
+            // Hydration script with config
+            Oxpecker.ViewEngine.script [] [
+                Oxpecker.ViewEngine.rawText $"""
+                    window.interactiveConfig = {clientConfig};
+                    document.addEventListener('DOMContentLoaded', function() {{
+                        // Initialize interactive content
+                        FlightDeck.Interactive.initialize(window.interactiveConfig);
+                    }});
+                """
+            ]
+            
+            // Load app script compiled from F#/Fable
+            Oxpecker.ViewEngine.script [
+                Oxpecker.ViewEngine._src "/js/interactive.js"
+                Oxpecker.ViewEngine._defer
+            ] []
+        ]
+    ]
+    |> Oxpecker.htmlView
+```
+
 ## Pricing and License Strategy
 
 The Interactive Content Authoring plugin would be offered as a premium extension for FlightDeck:
@@ -724,7 +968,7 @@ The Interactive Content Authoring plugin would be offered as a premium extension
 3. **Enterprise ($129/month):**
    - Unlimited interactive components
    - Custom visualization development
-   - Private NPM registry for components
+   - Private component registry for custom components
    - Technical support
    - White-labeling options
 
