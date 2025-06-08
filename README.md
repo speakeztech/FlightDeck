@@ -224,9 +224,9 @@ Thank you for contributing!
 ## Contributing and copyright
 
 The project is hosted on [GitHub](https://github.com/speakez-llc/FlightDeck) where you can [report issues](https://github.com/speakez-llc/FlightDeck/issues), fork
-the project and submit pull requests. Please read [Contribution Guide](https://github.com/speakez-llc/FlightDeck/blob/master/CONTRIBUTING.md)
+the project and submit pull requests. Please read [Contribution Guide](https://github.com/speakez-llc/FlightDeck/blob/main/CONTRIBUTING.md)
 
-The library is available under [MIT license](https://github.com/speakez-llc/FlightDeck/blob/master/LICENSE.md), which allows modification and redistribution for both commercial and non-commercial purposes.
+The library is available under [MIT license](https://github.com/speakez-llc/FlightDeck/blob/main/LICENSE.md), which allows modification and redistribution for both commercial and non-commercial purposes.
 
 Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
 
