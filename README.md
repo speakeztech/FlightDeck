@@ -1,8 +1,9 @@
 # FlightDeck
 
-<p align="center">
-    <img width="400" height="400" src="https://github.com/houstonhaynes/FlightDeck/blob/main/logo/FlightDeckMainLogoFullColor.svg?raw=true">
-</p>
+---
+**NOTICE: This site is deprecated. It will be set to read-only until the end of the year, at which time it will be removed. Please note that it will be replaced with a "SPEC Stack" project site. Until then users can follow the [CloudflareFS repository](https://github.com/speakeztech/CloudflareFS).**
+
+---
 
 FlightDeck is a **scriptable static web site generator** in a model akin to Hugo, but using a F# based DSL for type safety well defined page layouts. This adaptation leans heavily on the [Markdig](https://github.com/xoofx/markdig/tree/master) C# library for CommonMark support, which means it will also depart from Hugo conventions and instead adapt to those standards where they diverge. This tool also takes some inspiration from the opinions in the [SAFEr Template](https://github.com/Dzoukr/SAFEr.Template). While FlightDeck starts with minimal out-of-the-box JavaScript dependencies, it can be easily extended to adapt to your needs.
 
